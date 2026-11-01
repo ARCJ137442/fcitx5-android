@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.ui.main.settings.addon
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.RawConfig
+import org.fcitx.fcitx5.android.input.clipboard.ClipboardTriggerKeyConfig
 import org.fcitx.fcitx5.android.ui.main.settings.FcitxPreferenceFragment
 import org.fcitx.fcitx5.android.ui.main.settings.SettingsRoute
 import org.fcitx.fcitx5.android.utils.lazyRoute
@@ -35,5 +36,6 @@ class AddonConfigFragment : FcitxPreferenceFragment() {
 
     override suspend fun saveConfig(fcitx: FcitxAPI, newConfig: RawConfig) {
         fcitx.setAddonConfig(args.uniqueName, newConfig)
+        ClipboardTriggerKeyConfig.update(args.uniqueName, newConfig)
     }
 }

@@ -321,4 +321,13 @@
     <string name="keyboard_height_percent_base">Keyboard height percent base</string>
     <string name="display_metrics">Display metrics (Resources.getDisplayMetrics)</string>
     <string name="real_size">Real size (Display.getRealSize)</string>
+
+    <string name="clipboard_favorites_title">Pinned favorites</string>
+    <string name="clipboard_favorites_hint">1–9 paste · ↑↓ move · Enter paste · Esc back</string>
+    <string name="clipboard_favorites_empty">No pinned clipboard items</string>
+    <string name="clipboard_favorites_page">Page %1$d/%2$d</string>
+    <string name="clipboard_favorites_entry_description">Favorite %1$d: %2$s</string>
+
+    <string name="clipboard_favorites_load_error">Could not load pinned clipboard items</string>
+    <string name="clipboard_favorites_stale">Favorite changed; reopen the list</string>
 </resources>

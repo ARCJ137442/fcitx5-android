@@ -321,4 +321,13 @@
     <string name="keyboard_height_percent_base">键盘高度百分比</string>
     <string name="display_metrics">显示指标 (Resources.getDisplayMetrics)</string>
     <string name="real_size">真实尺寸 (Display.getRealSize)</string>
+
+    <string name="clipboard_favorites_title">置顶收藏</string>
+    <string name="clipboard_favorites_hint">1–9 粘贴 · ↑↓ 移动 · Enter 粘贴 · Esc 返回最近历史</string>
+    <string name="clipboard_favorites_empty">没有收藏的剪贴内容</string>
+    <string name="clipboard_favorites_page">第 %1$d/%2$d 页</string>
+    <string name="clipboard_favorites_entry_description">收藏第 %1$d 项：%2$s</string>
+
+    <string name="clipboard_favorites_load_error">无法读取置顶剪贴内容</string>
+    <string name="clipboard_favorites_stale">收藏项已变化，请重新打开列表</string>
 </resources>

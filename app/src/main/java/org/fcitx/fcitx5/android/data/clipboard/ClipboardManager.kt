@@ -104,6 +104,19 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
 
     fun allEntries() = clbDao.allEntries()
 
+    suspend fun pinnedEntries(limit: Int, offset: Int) = clbDao.pinnedEntries(limit, offset)
+
+    suspend fun pinnedEntryCount() = clbDao.pinnedEntryCount()
+
+    suspend fun getPinned(id: Int) = clbDao.getPinned(id)
+
+    suspend fun usePinned(id: Int): ClipboardEntry? = clbDb.withTransaction {
+        val entry = clbDao.getPinned(id) ?: return@withTransaction null
+        val used = entry.copy(timestamp = System.currentTimeMillis())
+        clbDao.updateTime(id, used.timestamp)
+        used
+    }
+
     suspend fun pin(id: Int) = clbDao.updatePinStatus(id, true)
 
     suspend fun unpin(id: Int) = clbDao.updatePinStatus(id, false)

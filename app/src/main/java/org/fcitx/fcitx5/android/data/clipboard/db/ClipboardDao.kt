@@ -38,6 +38,15 @@ interface ClipboardDao {
     @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=0 AND deleted=0")
     suspend fun getAllUnpinned(): List<ClipboardEntry>
 
+    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0 ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    suspend fun pinnedEntries(limit: Int, offset: Int): List<ClipboardEntry>
+
+    @Query("SELECT COUNT(*) FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0")
+    suspend fun pinnedEntryCount(): Int
+
+    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE id=:id AND pinned=1 AND deleted=0 LIMIT 1")
+    suspend fun getPinned(id: Int): ClipboardEntry?
+
     @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE deleted=0 ORDER BY pinned DESC, timestamp DESC")
     fun allEntries(): PagingSource<Int, ClipboardEntry>
 

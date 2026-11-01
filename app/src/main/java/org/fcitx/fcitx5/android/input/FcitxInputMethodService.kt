@@ -30,6 +30,7 @@ import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputMethodSubtype
 import android.widget.FrameLayout
+import android.widget.Toast
 import android.widget.inline.InlinePresentationSpec
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
@@ -51,6 +52,7 @@ import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.FormattedText
+import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.core.ScancodeMapping
@@ -58,11 +60,15 @@ import org.fcitx.fcitx5.android.core.SubtypeManager
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.FcitxDaemon
 import org.fcitx.fcitx5.android.data.InputFeedbacks
+import org.fcitx.fcitx5.android.data.clipboard.ClipboardManager
+import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.input.clipboard.ClipboardFavoritesOverlay
+import org.fcitx.fcitx5.android.input.clipboard.ClipboardTriggerKeyConfig
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
@@ -101,6 +107,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private lateinit var contentView: FrameLayout
     private var inputView: InputView? = null
     private var candidatesView: CandidatesView? = null
+
+    private var nativeClipboardModeActive = false
+    private var favoritesOverlayOpen = false
+    private var favoritesSelectionPending = false
+    private var favoritesPage = 0
+    private var favoritesPageCount = 1
+    private var favoritesRequestId = 0
+    private var inputContextGeneration = 0
+    private var favoritesLoadJob: Job? = null
+    private var favoritesOverlay: ClipboardFavoritesOverlay? = null
+    private val swallowedHardwareKeyUps = mutableSetOf<Long>()
 
     private val navbarMgr = NavigationBarManager()
     private val inputDeviceMgr = InputDeviceManager { isVirtualKeyboard ->
@@ -148,6 +165,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     )
 
     private fun replaceInputView(theme: Theme): InputView {
+        closeFavoritesSubmenu(returnToNative = true)
         val newInputView = InputView(this, fcitx, theme)
         setInputView(newInputView)
         inputDeviceMgr.setInputView(newInputView)
@@ -156,6 +174,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun replaceCandidateView(theme: Theme): CandidatesView {
+        closeFavoritesSubmenu(returnToNative = true)
         val newCandidatesView = CandidatesView(this, fcitx, theme)
         // replace CandidatesView manually
         contentView.removeView(candidatesView)
@@ -212,6 +231,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 handleFcitxEvent(it)
             }
         }
+        refreshClipboardTriggerKeys()
         pkgNameCache = PackageNameCache(this)
         recreateInputViewPrefs.forEach {
             it.registerOnChangeListener(recreateInputViewListener)
@@ -232,6 +252,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private fun handleFcitxEvent(event: FcitxEvent<*>) {
         when (event) {
             is FcitxEvent.CommitStringEvent -> {
+                nativeClipboardModeActive = false
                 commitText(event.data.text, event.data.cursor)
             }
             is FcitxEvent.KeyEvent -> event.data.let event@{
@@ -323,6 +344,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 }
             }
             is FcitxEvent.SwitchInputMethodEvent -> {
+                clearClipboardQuickAccess()
                 val (reason) = event.data
                 if (reason != FcitxEvent.SwitchInputMethodEvent.Reason.CapabilityChanged &&
                     reason != FcitxEvent.SwitchInputMethodEvent.Reason.Other
@@ -624,6 +646,209 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onEvaluateFullscreenMode() = false
 
+    private fun refreshClipboardTriggerKeys() {
+        postFcitxJob { ClipboardTriggerKeyConfig.reload(this) }
+    }
+
+    private fun keyEventToken(event: KeyEvent): Long {
+        val code = if (event.scanCode != 0) event.scanCode else event.keyCode
+        return (event.deviceId.toLong() shl 32) xor (code.toLong() and 0xffffffffL)
+    }
+
+    private fun isFavoritesMenuKey(event: KeyEvent): Boolean {
+        if (event.repeatCount != 0 || event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) {
+            return false
+        }
+        val sym = KeySym.fromKeyEvent(event)?.sym ?: return false
+        return sym == 'f'.code || sym == 'F'.code
+    }
+
+    private fun numberFromKeyEvent(event: KeyEvent): Int? {
+        if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed) {
+            return null
+        }
+        when (event.keyCode) {
+            in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9 ->
+                return event.keyCode - KeyEvent.KEYCODE_0
+            in KeyEvent.KEYCODE_NUMPAD_1..KeyEvent.KEYCODE_NUMPAD_9 ->
+                return event.keyCode - KeyEvent.KEYCODE_NUMPAD_0
+        }
+        val sym = KeySym.fromKeyEvent(event)?.sym ?: return null
+        return if (sym in '1'.code..'9'.code) sym - '0'.code else null
+    }
+
+    private fun openFavoritesSubmenu(page: Int) {
+        favoritesOverlayOpen = true
+        loadFavoritesPage(page)
+    }
+
+    private fun loadFavoritesPage(requestedPage: Int) {
+        val requestId = ++favoritesRequestId
+        favoritesPage = requestedPage.coerceAtLeast(0)
+        favoritesLoadJob?.cancel()
+        favoritesLoadJob = lifecycleScope.launch {
+            try {
+                val itemCount = ClipboardManager.pinnedEntryCount()
+                val pageCount = maxOf(1, (itemCount + FavoritesPageSize - 1) / FavoritesPageSize)
+                val page = requestedPage.coerceIn(0, pageCount - 1)
+                val entries = ClipboardManager.pinnedEntries(
+                    FavoritesPageSize,
+                    page * FavoritesPageSize
+                )
+                if (requestId != favoritesRequestId || !favoritesOverlayOpen) return@launch
+                favoritesPage = page
+                favoritesPageCount = pageCount
+                favoritesOverlay?.let(contentView::removeView)
+                val overlay = ClipboardFavoritesOverlay(
+                    context = this@FcitxInputMethodService,
+                    theme = ThemeManager.activeTheme,
+                    entries = entries,
+                    page = page,
+                    pageCount = pageCount,
+                    maskSensitive = AppPrefs.getInstance().clipboard.clipboardMaskSensitive.getValue(),
+                    onSelect = ::selectFavorite,
+                    onDismiss = { closeFavoritesSubmenu(returnToNative = true) }
+                )
+                favoritesOverlay = overlay
+                contentView.addView(
+                    overlay,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            } catch (error: Exception) {
+                Timber.w(error, "Failed to load pinned clipboard entries")
+                if (requestId != favoritesRequestId || !favoritesOverlayOpen) return@launch
+                favoritesPage = 0
+                favoritesPageCount = 1
+                favoritesOverlay?.let(contentView::removeView)
+                val overlay = ClipboardFavoritesOverlay(
+                    context = this@FcitxInputMethodService,
+                    theme = ThemeManager.activeTheme,
+                    entries = emptyList(),
+                    page = 0,
+                    pageCount = 1,
+                    maskSensitive = true,
+                    onSelect = ::selectFavorite,
+                    onDismiss = { closeFavoritesSubmenu(returnToNative = true) },
+                    emptyMessage = getString(R.string.clipboard_favorites_load_error)
+                )
+                favoritesOverlay = overlay
+                contentView.addView(
+                    overlay,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
+        }
+    }
+
+    private fun closeFavoritesSubmenu(returnToNative: Boolean) {
+        favoritesRequestId++
+        favoritesLoadJob?.cancel()
+        favoritesLoadJob = null
+        favoritesOverlay?.let { overlay ->
+            if (::contentView.isInitialized) contentView.removeView(overlay)
+        }
+        favoritesOverlay = null
+        favoritesOverlayOpen = false
+        favoritesSelectionPending = false
+        if (!returnToNative) nativeClipboardModeActive = false
+    }
+
+    private fun clearClipboardQuickAccess() {
+        closeFavoritesSubmenu(returnToNative = false)
+        nativeClipboardModeActive = false
+        swallowedHardwareKeyUps.clear()
+    }
+
+    private fun handleFavoritesKeyDown(event: KeyEvent): Boolean {
+        if (!favoritesOverlayOpen) return false
+        swallowedHardwareKeyUps += keyEventToken(event)
+        if (event.repeatCount != 0 || favoritesSelectionPending) return true
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BACK -> {
+                closeFavoritesSubmenu(returnToNative = true)
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_UP -> favoritesOverlay?.moveSelection(-1)
+            KeyEvent.KEYCODE_DPAD_DOWN -> favoritesOverlay?.moveSelection(1)
+            KeyEvent.KEYCODE_PAGE_UP -> if (favoritesPage > 0) loadFavoritesPage(favoritesPage - 1)
+            KeyEvent.KEYCODE_PAGE_DOWN -> if (favoritesPage + 1 < favoritesPageCount) loadFavoritesPage(favoritesPage + 1)
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_DPAD_CENTER ->
+                favoritesOverlay?.selectCurrent()
+            else -> numberFromKeyEvent(event)?.let { favoritesOverlay?.selectByNumber(it) }
+        }
+        return true
+    }
+
+    private fun selectFavorite(entry: ClipboardEntry) {
+        if (favoritesSelectionPending) return
+        favoritesSelectionPending = true
+        val requestId = favoritesRequestId
+        val inputGeneration = inputContextGeneration
+        lifecycleScope.launch {
+            val current = try {
+                ClipboardManager.getPinned(entry.id)
+            } catch (error: Exception) {
+                Timber.w(error, "Failed to read selected clipboard favorite")
+                null
+            }
+            if (requestId != favoritesRequestId || inputGeneration != inputContextGeneration ||
+                !favoritesOverlayOpen
+            ) {
+                favoritesSelectionPending = false
+                return@launch
+            }
+            if (current == null || currentInputConnection == null) {
+                favoritesSelectionPending = false
+                Toast.makeText(this@FcitxInputMethodService, R.string.clipboard_favorites_stale, Toast.LENGTH_SHORT).show()
+                loadFavoritesPage(favoritesPage)
+                return@launch
+            }
+
+            val shouldResetNative = nativeClipboardModeActive
+            if (shouldResetNative) {
+                val escapeJob = postFcitxJob {
+                    sendKey("Escape", up = false)
+                    sendKey("Escape", up = true)
+                }
+                escapeJob.join()
+            }
+            if (requestId != favoritesRequestId || inputGeneration != inputContextGeneration ||
+                !favoritesOverlayOpen || currentInputConnection == null
+            ) {
+                favoritesSelectionPending = false
+                return@launch
+            }
+
+            val selected = try {
+                ClipboardManager.usePinned(current.id)
+            } catch (error: Exception) {
+                Timber.w(error, "Failed to update clipboard favorite usage time")
+                null
+            }
+            if (selected == null) {
+                favoritesSelectionPending = false
+                Toast.makeText(this@FcitxInputMethodService, R.string.clipboard_favorites_stale, Toast.LENGTH_SHORT).show()
+                loadFavoritesPage(favoritesPage)
+                return@launch
+            }
+            commitText(selected.text)
+            closeFavoritesSubmenu(returnToNative = false)
+        }
+    }
+
+    private fun isNativeClipboardModeExitKey(event: KeyEvent): Boolean {
+        if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
+        return event.keyCode == KeyEvent.KEYCODE_ESCAPE ||
+            event.keyCode == KeyEvent.KEYCODE_DEL ||
+            event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
+    }
+
     private fun forwardKeyEvent(event: KeyEvent): Boolean {
         // reason to use a self increment index rather than timestamp:
         // KeyUp and KeyDown events actually can happen on the same time
@@ -643,17 +868,31 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // request to show floating CandidatesView when pressing physical keyboard
+        if (favoritesOverlayOpen) {
+            return handleFavoritesKeyDown(event)
+        }
+        if (nativeClipboardModeActive && isFavoritesMenuKey(event)) {
+            swallowedHardwareKeyUps += keyEventToken(event)
+            openFavoritesSubmenu(page = 0)
+            return true
+        }
+
+        val triggerKey = ClipboardTriggerKeyConfig.matches(event)
+        if (triggerKey) nativeClipboardModeActive = true
+        else if (nativeClipboardModeActive && isNativeClipboardModeExitKey(event)) {
+            nativeClipboardModeActive = false
+        }
+
+        // The trigger still reaches the native ClipboardTempMode; only F is intercepted by Kotlin.
         if (inputDeviceMgr.evaluateOnKeyDown(event, this)) {
-            postFcitxJob {
-                focus(true)
-            }
+            postFcitxJob { focus(true) }
             forceShowSelf()
         }
         return forwardKeyEvent(event) || super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (swallowedHardwareKeyUps.remove(keyEventToken(event))) return true
         return forwardKeyEvent(event) || super.onKeyUp(keyCode, event)
     }
 
@@ -760,6 +999,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         postFcitxJob {
             focus(true)
         }
+        inputContextGeneration++
+        clearClipboardQuickAccess()
+        refreshClipboardTriggerKeys()
         if (inputDeviceMgr.evaluateOnStartInputView(info, this)) {
             // because onStartInputView will always be called after onStartInput,
             // editorInfo and capFlags should be up-to-date
@@ -1049,6 +1291,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
+        inputContextGeneration++
+        clearClipboardQuickAccess()
         decorLocationUpdated = false
         inputDeviceMgr.onFinishInputView()
         currentInputConnection?.apply {
@@ -1065,6 +1309,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     override fun onFinishInput() {
         Timber.d("onFinishInput")
+        clearClipboardQuickAccess()
         postFcitxJob {
             focus(false)
         }
@@ -1072,6 +1317,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onUnbindInput() {
+        clearClipboardQuickAccess()
         cachedKeyEvents.evictAll()
         cachedKeyEventIndex = 0
         cursorUpdateIndex = 0
@@ -1084,6 +1330,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onDestroy() {
+        clearClipboardQuickAccess()
         recreateInputViewPrefs.forEach {
             it.unregisterOnChangeListener(recreateInputViewListener)
         }
@@ -1117,6 +1364,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     @Suppress("ConstPropertyName")
     companion object {
+        private const val FavoritesPageSize = 9
         const val DefaultHighlightColor = 0x008577  // material_deep_teal_500
         const val DeleteSurroundingFlag = "org.fcitx.fcitx5.android.DELETE_SURROUNDING"
     }
