@@ -15,6 +15,9 @@ import org.fcitx.fcitx5.android.utils.lazyRoute
 class AddonConfigFragment : FcitxPreferenceFragment() {
     private val args by lazyRoute<SettingsRoute.AddonConfig>()
 
+    override fun visibleKeyConfigNames(): Set<String> =
+        if (args.uniqueName == "clipboard") setOf("TriggerKey") else emptySet()
+
     override fun getPageTitle(): String = args.name
 
     override suspend fun obtainConfig(fcitx: FcitxAPI): RawConfig {

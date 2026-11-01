@@ -17,6 +17,7 @@ import android.widget.TextView
 import androidx.annotation.Size
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.FormattedText
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -57,6 +58,7 @@ class CandidatesView(
 
     private var inputPanel = FcitxEvent.InputPanelEvent.Data()
     private var paged = FcitxEvent.PagedCandidateEvent.Data.Empty
+    private var clipboardModeHint: String? = null
 
     /**
      * horizontal, bottom, top
@@ -132,7 +134,22 @@ class CandidatesView(
     }
 
     private fun updateUi() {
-        preeditUi.update(inputPanel)
+        val hint = clipboardModeHint
+        val auxUpText = inputPanel.auxUp.toString()
+        val displayPanel = if (hint != null &&
+            (auxUpText.contains("clipboard", ignoreCase = true) || auxUpText.contains("剪贴板"))
+        ) {
+            inputPanel.copy(
+                auxUp = FormattedText(
+                    inputPanel.auxUp.strings + hint,
+                    inputPanel.auxUp.flags + 0,
+                    -1
+                )
+            )
+        } else {
+            inputPanel
+        }
+        preeditUi.update(displayPanel)
         preeditUi.root.visibility = if (preeditUi.visible) VISIBLE else GONE
         candidatesUi.update(paged, orientation)
         if (evaluateVisibility()) {
@@ -141,6 +158,11 @@ class CandidatesView(
             // RecyclerView won't update its items when ancestor view is GONE
             visibility = INVISIBLE
         }
+    }
+
+    fun setClipboardModeHint(hint: String?) {
+        clipboardModeHint = hint
+        updateUi()
     }
 
     private var bottomInsets = 0

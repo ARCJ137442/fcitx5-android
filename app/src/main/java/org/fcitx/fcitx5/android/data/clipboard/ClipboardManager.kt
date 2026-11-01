@@ -39,6 +39,10 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
     private val clipboardManager = appContext.clipboardManager
 
     private val mutex = Mutex()
+    private val pinnedOrderMutex = Mutex()
+    private val fixedPinnedOrderPref = AppPrefs.getInstance().clipboard.fixedPinnedOrder
+    private val fixedPinnedOrderInitializedPref =
+        AppPrefs.getInstance().clipboard.fixedPinnedOrderInitialized
 
     var itemCount: Int = 0
         private set
@@ -104,7 +108,14 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
 
     fun allEntries() = clbDao.allEntries()
 
-    suspend fun pinnedEntries(limit: Int, offset: Int) = clbDao.pinnedEntries(limit, offset)
+    suspend fun pinnedEntries(limit: Int, offset: Int): List<ClipboardEntry> {
+        return if (fixedPinnedOrderPref.getValue()) {
+            ensurePinnedOrderInitialized()
+            clbDao.pinnedEntriesByOrder(limit, offset)
+        } else {
+            clbDao.pinnedEntries(limit, offset)
+        }
+    }
 
     suspend fun pinnedEntryCount() = clbDao.pinnedEntryCount()
 
@@ -117,9 +128,109 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
         used
     }
 
-    suspend fun pin(id: Int) = clbDao.updatePinStatus(id, true)
+    suspend fun pin(id: Int) {
+        if (fixedPinnedOrderPref.getValue()) ensurePinnedOrderInitialized()
+        clbDb.withTransaction {
+            val entry = clbDao.get(id) ?: return@withTransaction
+            clbDao.updatePinStatus(id, true)
+            clbDao.updateTime(id, System.currentTimeMillis())
+            if (fixedPinnedOrderInitializedPref.getValue()) {
+                normalizePinnedOrder(topId = entry.id)
+            }
+        }
+    }
 
-    suspend fun unpin(id: Int) = clbDao.updatePinStatus(id, false)
+    suspend fun unpin(id: Int) {
+        clbDb.withTransaction {
+            clbDao.updatePinStatus(id, false)
+            if (fixedPinnedOrderInitializedPref.getValue()) normalizePinnedOrder()
+        }
+    }
+
+    suspend fun pinFromNative(text: String, sensitive: Boolean): ClipboardEntry? {
+        if (text.isBlank()) return null
+        if (fixedPinnedOrderPref.getValue()) ensurePinnedOrderInitialized()
+        val timestamp = System.currentTimeMillis()
+        val entry = clbDb.withTransaction {
+            val existing = clbDao.find(text, sensitive)
+            val pinned = if (existing != null) {
+                clbDao.updatePinStatus(existing.id, true)
+                clbDao.updateTime(existing.id, timestamp)
+                existing.copy(pinned = true, timestamp = timestamp)
+            } else {
+                val newEntry = ClipboardEntry(
+                    text = text,
+                    pinned = true,
+                    timestamp = timestamp,
+                    sensitive = sensitive
+                )
+                val rowId = clbDao.insert(newEntry)
+                clbDao.get(rowId) ?: newEntry
+            }
+            if (fixedPinnedOrderInitializedPref.getValue()) {
+                normalizePinnedOrder(topId = pinned.id)
+            }
+            pinned
+        }
+        updateItemCount()
+        return entry
+    }
+
+    data class PinnedMoveResult(
+        val selectedIndex: Int,
+        val fixedOrderWasEnabled: Boolean,
+        val moved: Boolean
+    )
+
+    suspend fun movePinned(id: Int, delta: Int): PinnedMoveResult? {
+        val enabledOrder = fixedPinnedOrderPref.getValue()
+        if (!enabledOrder) fixedPinnedOrderPref.setValue(true)
+        ensurePinnedOrderInitialized()
+        return clbDb.withTransaction {
+            val entries = clbDao.allPinnedEntriesByOrder()
+            val currentIndex = entries.indexOfFirst { it.id == id }
+            if (currentIndex < 0) return@withTransaction null
+            val selectedIndex = (currentIndex + delta).coerceIn(0, entries.lastIndex)
+            if (selectedIndex != currentIndex) {
+                val reordered = entries.toMutableList()
+                val selected = reordered.removeAt(currentIndex)
+                reordered.add(selectedIndex, selected)
+                reordered.forEachIndexed { index, entry ->
+                    if (entry.pinnedOrder != index) clbDao.updatePinnedOrder(entry.id, index)
+                }
+            }
+            PinnedMoveResult(selectedIndex, fixedOrderWasEnabled = !enabledOrder, moved = selectedIndex != currentIndex)
+        }
+    }
+
+    private suspend fun ensurePinnedOrderInitialized() {
+        if (fixedPinnedOrderInitializedPref.getValue()) return
+        pinnedOrderMutex.withLock {
+            if (fixedPinnedOrderInitializedPref.getValue()) return@withLock
+            clbDb.withTransaction {
+                clbDao.allPinnedEntriesByRecentUse().forEachIndexed { index, entry ->
+                    clbDao.updatePinnedOrder(entry.id, index)
+                }
+            }
+            fixedPinnedOrderInitializedPref.setValue(true)
+        }
+    }
+
+    private suspend fun normalizePinnedOrder(topId: Int? = null) {
+        val entries = clbDao.allPinnedEntriesByOrder()
+        val ordered = if (topId == null) {
+            entries
+        } else {
+            entries.sortedWith(
+                compareBy<ClipboardEntry> { if (it.id == topId) 0 else 1 }
+                    .thenBy { it.pinnedOrder }
+                    .thenByDescending { it.timestamp }
+            )
+        }
+        ordered.forEachIndexed { index, entry ->
+            if (entry.pinnedOrder != index) clbDao.updatePinnedOrder(entry.id, index)
+        }
+    }
 
     suspend fun updateText(id: Int, text: String) {
         lastEntry?.let {

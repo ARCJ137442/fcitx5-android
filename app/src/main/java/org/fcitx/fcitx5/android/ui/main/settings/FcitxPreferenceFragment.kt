@@ -29,6 +29,8 @@ abstract class FcitxPreferenceFragment : PaddingPreferenceFragment() {
     abstract suspend fun obtainConfig(fcitx: FcitxAPI): RawConfig
     abstract suspend fun saveConfig(fcitx: FcitxAPI, newConfig: RawConfig)
 
+    protected open fun visibleKeyConfigNames(): Set<String> = emptySet()
+
     private lateinit var raw: RawConfig
     private var configLoaded = false
 
@@ -97,7 +99,8 @@ abstract class FcitxPreferenceFragment : PaddingPreferenceFragment() {
             configLoaded = raw.findByName("cfg") != null && raw.findByName("desc") != null
             preferenceScreen = if (configLoaded) {
                 PreferenceScreenFactory.create(
-                    preferenceManager, parentFragmentManager, raw, ::save
+                    preferenceManager, parentFragmentManager, raw, ::save,
+                    visibleKeyConfigNames()
                 ).apply {
                     if (isEmpty()) {
                         addPreference(R.string.no_config_options)

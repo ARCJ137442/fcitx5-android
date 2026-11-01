@@ -30,6 +30,8 @@ class ClipboardFavoritesOverlay(
     page: Int,
     pageCount: Int,
     maskSensitive: Boolean,
+    selectedEntryId: Int? = null,
+    selectedIndex: Int = 0,
     private val onSelect: (ClipboardEntry) -> Unit,
     private val onDismiss: () -> Unit,
     private val emptyMessage: String? = null
@@ -44,7 +46,13 @@ class ClipboardFavoritesOverlay(
 
     private val scrollView = ScrollView(context)
     private val rows = mutableListOf<Row>()
-    private var selectedIndex = 0
+    private var selectedIndex = selectedIndex.coerceAtLeast(0)
+
+    val currentSelectionIndex: Int
+        get() = selectedIndex
+
+    val currentSelection: ClipboardEntry?
+        get() = rows.getOrNull(selectedIndex)?.entry
 
     init {
         isClickable = true
@@ -138,6 +146,15 @@ class ClipboardFavoritesOverlay(
             }
         }
 
+        if (entries.isNotEmpty()) {
+            val restoredIndex = selectedEntryId?.let { id ->
+                entries.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+            }
+            this.selectedIndex = (restoredIndex ?: this.selectedIndex).coerceIn(0, entries.lastIndex)
+        } else {
+            this.selectedIndex = 0
+        }
+
         val desiredListHeight = if (entries.isEmpty()) context.dp(82) else entries.size * context.dp(62)
         val maxListHeight = minOf(context.dp(430), (context.resources.displayMetrics.heightPixels * 0.62f).toInt())
         val listHeight = minOf(desiredListHeight, maxListHeight).coerceAtLeast(context.dp(72))
@@ -164,6 +181,9 @@ class ClipboardFavoritesOverlay(
             FrameLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
         )
         updateSelection()
+        scrollView.post {
+            rows.getOrNull(selectedIndex)?.let { scrollView.scrollTo(0, it.root.top) }
+        }
     }
 
     fun moveSelection(delta: Int) {
@@ -188,6 +208,7 @@ class ClipboardFavoritesOverlay(
     private fun updateSelection() {
         rows.forEachIndexed { index, row ->
             val selected = index == selectedIndex
+            row.root.isSelected = selected
             row.number.background = roundedDrawable(
                 if (selected) theme.genericActiveBackgroundColor else theme.clipboardEntryColor,
                 if (selected) theme.genericActiveBackgroundColor else theme.popupBackgroundColor

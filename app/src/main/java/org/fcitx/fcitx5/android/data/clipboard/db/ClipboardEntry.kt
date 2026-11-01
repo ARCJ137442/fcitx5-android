@@ -18,6 +18,8 @@ data class ClipboardEntry(
     val id: Int = 0,
     val text: String,
     val pinned: Boolean = false,
+    @ColumnInfo(defaultValue = "0")
+    val pinnedOrder: Int = 0,
     @ColumnInfo(defaultValue = "-1")
     val timestamp: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = ClipDescription.MIMETYPE_TEXT_PLAIN)

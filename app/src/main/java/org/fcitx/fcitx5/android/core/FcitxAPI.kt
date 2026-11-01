@@ -6,6 +6,8 @@ package org.fcitx.fcitx5.android.core
 
 import kotlinx.coroutines.flow.SharedFlow
 
+data class ClipboardCandidateInfo(val text: String, val sensitive: Boolean)
+
 /**
  * API of fcitx that hides lifecycle stuffs from [Fcitx]
  *
@@ -89,6 +91,9 @@ interface FcitxAPI {
 
     suspend fun triggerQuickPhrase()
     suspend fun triggerUnicode()
+
+    suspend fun currentClipboardEntry(): ClipboardCandidateInfo?
+    suspend fun removeCurrentClipboardEntry(): ClipboardCandidateInfo?
 
     suspend fun focus(focus: Boolean = true)
     suspend fun focusOutIn()

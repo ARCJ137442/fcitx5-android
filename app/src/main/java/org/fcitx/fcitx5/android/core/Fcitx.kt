@@ -160,6 +160,20 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
     override suspend fun triggerQuickPhrase() = withFcitxContext { triggerQuickPhraseInput() }
     override suspend fun triggerUnicode() = withFcitxContext { triggerUnicodeInput() }
+
+    override suspend fun currentClipboardEntry() = withFcitxContext {
+        getFcitxClipboardCurrentEntry()?.let(::clipboardCandidateInfo)
+    }
+
+    override suspend fun removeCurrentClipboardEntry() = withFcitxContext {
+        removeFcitxClipboardCurrentEntry()?.let(::clipboardCandidateInfo)
+    }
+
+    private fun clipboardCandidateInfo(data: Array<Any>): ClipboardCandidateInfo? {
+        val text = data.getOrNull(0) as? String ?: return null
+        val sensitive = data.getOrNull(1) as? Boolean ?: return null
+        return ClipboardCandidateInfo(text, sensitive)
+    }
     private suspend fun setClipboard(string: String, password: Boolean = false) =
         withFcitxContext { setFcitxClipboard(string, password) }
 
@@ -343,6 +357,12 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
         @JvmStatic
         external fun setFcitxClipboard(string: String, password: Boolean)
+
+        @JvmStatic
+        external fun getFcitxClipboardCurrentEntry(): Array<Any>?
+
+        @JvmStatic
+        external fun removeFcitxClipboardCurrentEntry(): Array<Any>?
 
         @JvmStatic
         external fun focusInputContext(focus: Boolean)

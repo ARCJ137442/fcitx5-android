@@ -333,6 +333,27 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
 
     inner class Clipboard : ManagedPreferenceCategory(R.string.clipboard, sharedPreferences) {
         val clipboardListening = switch(R.string.clipboard_listening, "clipboard_enable", true)
+        val fixedPinnedOrder = switch(
+            R.string.clipboard_fixed_order,
+            "clipboard_fixed_order",
+            false,
+            R.string.clipboard_fixed_order_summary
+        )
+        val fixedPinnedOrderInitialized = ManagedPreference.PBool(
+            sharedPreferences,
+            "clipboard_fixed_order_initialized",
+            false
+        ).apply { register() }
+        val pinShortcut = ManagedPreference.PString(
+            sharedPreferences,
+            "clipboard_pin_shortcut",
+            "d"
+        ).apply { register() }
+        val deleteShortcut = ManagedPreference.PString(
+            sharedPreferences,
+            "clipboard_delete_shortcut",
+            "x"
+        ).apply { register() }
         val clipboardHistoryLimit = int(
             R.string.clipboard_limit,
             "clipboard_limit",

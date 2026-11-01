@@ -368,6 +368,20 @@ public:
         p_clipboard->call<fcitx::IClipboard::setClipboardV2>("", string, password);
     }
 
+    fcitx::ClipboardCandidateInfo currentClipboardEntry() {
+        if (!p_clipboard || !p_frontend) return {};
+        auto *ic = p_frontend->call<fcitx::IAndroidFrontend::activeInputContext>();
+        if (!ic) return {};
+        return p_clipboard->call<fcitx::IClipboard::currentEntry>(ic);
+    }
+
+    fcitx::ClipboardCandidateInfo removeCurrentClipboardEntry() {
+        if (!p_clipboard || !p_frontend) return {};
+        auto *ic = p_frontend->call<fcitx::IAndroidFrontend::activeInputContext>();
+        if (!ic) return {};
+        return p_clipboard->call<fcitx::IClipboard::removeCurrentEntry>(ic);
+    }
+
     void focusInputContext(bool focus) {
         if (!p_frontend) return;
         p_frontend->call<fcitx::IAndroidFrontend::focusInputContext>(focus);
@@ -997,6 +1011,34 @@ JNIEXPORT void JNICALL
 Java_org_fcitx_fcitx5_android_core_Fcitx_setFcitxClipboard(JNIEnv *env, jclass clazz, jstring string, jboolean password) {
     RETURN_IF_NOT_RUNNING
     Fcitx::Instance().setClipboard(CString(env, string), password == JNI_TRUE);
+}
+
+extern "C"
+JNIEXPORT jobjectArray JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_getFcitxClipboardCurrentEntry(JNIEnv *env, jclass clazz) {
+    RETURN_VALUE_IF_NOT_RUNNING(nullptr)
+    const auto entry = Fcitx::Instance().currentClipboardEntry();
+    if (!entry.valid) return nullptr;
+    auto array = JRef<jobjectArray>(env, env->NewObjectArray(2, GlobalRef->Object, nullptr));
+    env->SetObjectArrayElement(array, 0, JString(env, entry.text));
+    auto sensitive = JRef(env, env->NewObject(GlobalRef->Boolean, GlobalRef->BooleanInit,
+                                               entry.sensitive));
+    env->SetObjectArrayElement(array, 1, *sensitive);
+    return array;
+}
+
+extern "C"
+JNIEXPORT jobjectArray JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_removeFcitxClipboardCurrentEntry(JNIEnv *env, jclass clazz) {
+    RETURN_VALUE_IF_NOT_RUNNING(nullptr)
+    const auto entry = Fcitx::Instance().removeCurrentClipboardEntry();
+    if (!entry.valid) return nullptr;
+    auto array = JRef<jobjectArray>(env, env->NewObjectArray(2, GlobalRef->Object, nullptr));
+    env->SetObjectArrayElement(array, 0, JString(env, entry.text));
+    auto sensitive = JRef(env, env->NewObject(GlobalRef->Boolean, GlobalRef->BooleanInit,
+                                               entry.sensitive));
+    env->SetObjectArrayElement(array, 1, *sensitive);
+    return array;
 }
 
 extern "C"

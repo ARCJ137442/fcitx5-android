@@ -51,7 +51,8 @@ object PreferenceScreenFactory {
         preferenceManager: PreferenceManager,
         fragmentManager: FragmentManager,
         raw: RawConfig,
-        save: () -> Unit
+        save: () -> Unit,
+        visibleKeyConfigNames: Set<String> = emptySet()
     ): PreferenceScreen {
         val context = preferenceManager.context
         val screen = preferenceManager.createPreferenceScreen(context)
@@ -62,7 +63,10 @@ object PreferenceScreenFactory {
         val topLevelDesc = ConfigDescriptor.parseTopLevel(desc).getOrElse { throw it }
         screen.title = topLevelDesc.name
         topLevelDesc.values.forEach {
-            general(context, fragmentManager, cfg.findByName(it.name), screen, it, store, save)
+            general(
+                context, fragmentManager, cfg.findByName(it.name), screen, it, store, save,
+                visibleKeyConfigNames
+            )
         }
         return screen
     }
@@ -74,16 +78,19 @@ object PreferenceScreenFactory {
         screen: PreferenceScreen,
         descriptor: ConfigDescriptor<*, *>,
         store: PreferenceDataStore,
-        save: () -> Unit
+        save: () -> Unit,
+        visibleKeyConfigNames: Set<String>
     ) {
 
         // Hide key related configs
-        if (hideKeyConfig && ConfigType.pretty(descriptor.ty).contains("Key")) {
+        if (hideKeyConfig && ConfigType.pretty(descriptor.ty).contains("Key") &&
+            descriptor.name !in visibleKeyConfigNames
+        ) {
             return
         }
 
         if (descriptor is ConfigCustom) {
-            custom(context, fragmentManager, cfg, screen, descriptor, save)
+            custom(context, fragmentManager, cfg, screen, descriptor, save, visibleKeyConfigNames)
             return
         }
 
@@ -282,7 +289,8 @@ object PreferenceScreenFactory {
         cfg: RawConfig?,
         screen: PreferenceScreen,
         descriptor: ConfigCustom,
-        save: () -> Unit
+        save: () -> Unit,
+        visibleKeyConfigNames: Set<String>
     ) {
         val subStore = FcitxRawConfigStore(cfg ?: RawConfig())
         val subPref = PreferenceCategory(context).apply {
@@ -293,7 +301,10 @@ object PreferenceScreenFactory {
         }
         screen.addPreference(subPref)
         descriptor.customTypeDef?.values?.forEach {
-            general(context, fragmentManager, cfg?.findByName(it.name), screen, it, subStore, save)
+            general(
+                context, fragmentManager, cfg?.findByName(it.name), screen, it, subStore, save,
+                visibleKeyConfigNames
+            )
         }
     }
 

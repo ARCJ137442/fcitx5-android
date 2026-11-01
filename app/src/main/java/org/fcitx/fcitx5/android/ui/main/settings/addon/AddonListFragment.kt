@@ -113,9 +113,7 @@ class AddonListFragment : ProgressFragment(), OnItemChangedListener<AddonInfo> {
             initSettingsButton = { entry ->
                 visibility =
                     if (entry.isConfigurable &&
-                        entry.enabled &&
-                        // we disable clipboard addon config since we take over the control
-                        entry.uniqueName != "clipboard"
+                        entry.enabled
                     ) View.VISIBLE else View.INVISIBLE
                 setOnClickListener {
                     navigateWithAnim(

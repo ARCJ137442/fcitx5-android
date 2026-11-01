@@ -23,6 +23,9 @@ interface ClipboardDao {
     @Query("UPDATE ${ClipboardEntry.TABLE_NAME} SET timestamp=:timestamp WHERE id=:id")
     suspend fun updateTime(id: Int, timestamp: Long)
 
+    @Query("UPDATE ${ClipboardEntry.TABLE_NAME} SET pinnedOrder=:pinnedOrder WHERE id=:id")
+    suspend fun updatePinnedOrder(id: Int, pinnedOrder: Int)
+
     @Query("SELECT COUNT(*) FROM ${ClipboardEntry.TABLE_NAME} WHERE deleted=0")
     suspend fun itemCount(): Int
 
@@ -38,8 +41,17 @@ interface ClipboardDao {
     @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=0 AND deleted=0")
     suspend fun getAllUnpinned(): List<ClipboardEntry>
 
-    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0 ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0 ORDER BY timestamp DESC, id DESC LIMIT :limit OFFSET :offset")
     suspend fun pinnedEntries(limit: Int, offset: Int): List<ClipboardEntry>
+
+    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0 ORDER BY pinnedOrder ASC, timestamp DESC, id DESC LIMIT :limit OFFSET :offset")
+    suspend fun pinnedEntriesByOrder(limit: Int, offset: Int): List<ClipboardEntry>
+
+    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0 ORDER BY pinnedOrder ASC, timestamp DESC, id DESC")
+    suspend fun allPinnedEntriesByOrder(): List<ClipboardEntry>
+
+    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0 ORDER BY timestamp DESC, id DESC")
+    suspend fun allPinnedEntriesByRecentUse(): List<ClipboardEntry>
 
     @Query("SELECT COUNT(*) FROM ${ClipboardEntry.TABLE_NAME} WHERE pinned=1 AND deleted=0")
     suspend fun pinnedEntryCount(): Int
@@ -50,7 +62,7 @@ interface ClipboardDao {
     @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE deleted=0 ORDER BY pinned DESC, timestamp DESC")
     fun allEntries(): PagingSource<Int, ClipboardEntry>
 
-    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE text=:text AND sensitive=:sensitive AND deleted=0 LIMIT 1")
+    @Query("SELECT * FROM ${ClipboardEntry.TABLE_NAME} WHERE text=:text AND sensitive=:sensitive AND deleted=0 ORDER BY timestamp DESC LIMIT 1")
     suspend fun find(text: String, sensitive: Boolean = false): ClipboardEntry?
 
     @Query("SELECT id FROM ${ClipboardEntry.TABLE_NAME} WHERE deleted=0")
