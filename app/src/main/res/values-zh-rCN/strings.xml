@@ -323,7 +323,7 @@
     <string name="real_size">真实尺寸 (Display.getRealSize)</string>
 
     <string name="clipboard_favorites_title">置顶收藏</string>
-    <string name="clipboard_favorites_hint">1–9/空格粘贴 · ↑↓选择 · Ctrl+↑/↓重排 · X取消置顶 · [ ]翻页 · Q回剪贴板</string>
+    <string name="clipboard_favorites_hint">1–9/空格粘贴 · ↑↓选择 · Ctrl+↑/↓重排 · %1$s取消置顶 · %2$s翻页 · %3$s返回</string>
     <string name="clipboard_favorites_empty">没有收藏的剪贴内容</string>
     <string name="clipboard_favorites_page">第 %1$d/%2$d 页</string>
     <string name="clipboard_favorites_entry_description">收藏第 %1$d 项：%2$s</string>
@@ -333,17 +333,13 @@
     <string name="clipboard_fixed_order">固定置顶顺序</string>
     <string name="clipboard_fixed_order_summary">关闭时按最近使用排序；开启后保持手动排列顺序</string>
     <string name="clipboard_keyboard_shortcuts">键盘快捷键</string>
-    <string name="clipboard_pin_shortcut">置顶最近历史项</string>
-    <string name="clipboard_delete_shortcut">删除历史项/取消置顶</string>
     <string name="clipboard_native_addon_settings">剪贴板插件设置</string>
-    <string name="clipboard_native_addon_settings_summary">设置触发键与最近历史显示数量</string>
-    <string name="clipboard_native_hint_suffix"> · %1$s置顶 · %2$s删除 · F收藏 · %3$s关闭</string>
-    <string name="clipboard_close_key">Q</string>
+    <string name="clipboard_native_addon_settings_summary">设置触发键、菜单动作快捷键与最近历史显示数量</string>
+    <string name="clipboard_native_hint_suffix"> · %1$s置顶 · %2$s删除 · %3$s收藏 · %4$s关闭</string>
     <string name="clipboard_pinned_toast">已加入置顶收藏</string>
     <string name="clipboard_recent_deleted_toast">已从最近历史删除</string>
     <string name="clipboard_no_selected_entry">当前没有选中的剪贴板项</string>
     <string name="clipboard_action_failed">剪贴板操作失败</string>
     <string name="clipboard_unpinned_toast">已取消置顶</string>
-    <string name="clipboard_shortcut_conflict">该快捷键已用于其他剪贴板操作</string>
     <string name="clipboard_fixed_order_enabled_toast">已启用固定置顶顺序</string>
 </resources>

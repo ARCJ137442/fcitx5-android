@@ -34,6 +34,7 @@ class ClipboardFavoritesOverlay(
     selectedIndex: Int = 0,
     private val onSelect: (ClipboardEntry) -> Unit,
     private val onDismiss: () -> Unit,
+    private val hint: String,
     private val emptyMessage: String? = null
 ) : FrameLayout(context) {
 
@@ -167,7 +168,7 @@ class ClipboardFavoritesOverlay(
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, listHeight)
         )
         panel.addView(TextView(context).apply {
-            text = context.getString(R.string.clipboard_favorites_hint)
+            text = hint
             textSize = 12f
             setTextColor(theme.popupTextColor)
             setPadding(context.dp(4), context.dp(8), context.dp(4), context.dp(2))

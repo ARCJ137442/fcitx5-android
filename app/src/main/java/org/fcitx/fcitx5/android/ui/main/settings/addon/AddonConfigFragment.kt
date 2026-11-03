@@ -16,7 +16,20 @@ class AddonConfigFragment : FcitxPreferenceFragment() {
     private val args by lazyRoute<SettingsRoute.AddonConfig>()
 
     override fun visibleKeyConfigNames(): Set<String> =
-        if (args.uniqueName == "clipboard") setOf("TriggerKey") else emptySet()
+        if (args.uniqueName == "clipboard") {
+            setOf(
+                "TriggerKey",
+                "FavoritesFilterKey",
+                "PinToggleKey",
+                "DeleteEntryKey",
+                "CloseMenuKey",
+                "ClearHistoryKey",
+                "PreviousPageKey",
+                "NextPageKey"
+            )
+        } else {
+            emptySet()
+        }
 
     override fun getPageTitle(): String = args.name
 
