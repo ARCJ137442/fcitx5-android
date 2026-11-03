@@ -11,6 +11,7 @@ import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.core.RawConfig
+import timber.log.Timber
 
 /**
  * Runtime view of the native clipboard addon's key list.
@@ -165,6 +166,12 @@ object ClipboardTriggerKeyConfig {
             ),
             previousPage = readKeys(config, "PreviousPageKey", defaults.previousPage),
             nextPage = readKeys(config, "NextPageKey", defaults.nextPage)
+        )
+        Timber.d(
+            "Clipboard config: showShortcutHints=${configured.showShortcutHints}" +
+                " rawShowShortcutHints=${config.findByName("ShowShortcutHints")?.value}" +
+                " favoritesTriggers=${configured.favoritesTriggers}" +
+                " rawFavoritesTriggers=${config.findByName("FavoritesTriggerKey")?.subItems?.map { it.value }}"
         )
     }
 

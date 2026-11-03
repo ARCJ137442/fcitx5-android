@@ -88,6 +88,15 @@ class ClipboardFavoritesOverlay(
         }
         panel.addView(titleBar)
 
+        if (!hint.isNullOrBlank()) {
+            panel.addView(TextView(context).apply {
+                text = hint
+                textSize = 12f
+                setTextColor(theme.popupTextColor)
+                setPadding(context.dp(4), context.dp(2), context.dp(4), context.dp(6))
+            })
+        }
+
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -156,9 +165,15 @@ class ClipboardFavoritesOverlay(
             this.selectedIndex = 0
         }
 
+        val hintHeight = if (!hint.isNullOrBlank()) context.dp(30) else 0
+        val titleHeight = context.dp(34)
+        // Keep the hint line visible: the panel is vertically centered inside the
+        // IME window, so an over-tall list pushes the bottom hint out of view.
+        val panelMaxHeight = (context.resources.displayMetrics.heightPixels * 0.62f).toInt()
+        val listMaxHeight = (panelMaxHeight - titleHeight - hintHeight - context.dp(30))
+            .coerceAtLeast(context.dp(72))
         val desiredListHeight = if (entries.isEmpty()) context.dp(82) else entries.size * context.dp(62)
-        val maxListHeight = minOf(context.dp(430), (context.resources.displayMetrics.heightPixels * 0.62f).toInt())
-        val listHeight = minOf(desiredListHeight, maxListHeight).coerceAtLeast(context.dp(72))
+        val listHeight = minOf(desiredListHeight, listMaxHeight).coerceAtLeast(context.dp(72))
         scrollView.addView(
             list,
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -167,15 +182,6 @@ class ClipboardFavoritesOverlay(
             scrollView,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, listHeight)
         )
-        if (!hint.isNullOrBlank()) {
-            panel.addView(TextView(context).apply {
-                text = hint
-                textSize = 12f
-                setTextColor(theme.popupTextColor)
-                setPadding(context.dp(4), context.dp(8), context.dp(4), context.dp(2))
-            })
-        }
-
         val availableWidth = (context.resources.displayMetrics.widthPixels - context.dp(36))
             .coerceAtLeast(context.dp(260))
         val panelWidth = minOf(availableWidth, context.dp(620))

@@ -948,7 +948,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun favoritesHint(): String? {
-        if (!ClipboardTriggerKeyConfig.showShortcutHints()) return null
+        if (!ClipboardTriggerKeyConfig.showShortcutHints()) {
+            Timber.d("Favorites hint suppressed by ShowShortcutHints")
+            return null
+        }
         val bindings = ClipboardTriggerKeyConfig.bindings()
         return getString(
             R.string.clipboard_favorites_hint,
@@ -958,7 +961,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 "[ / ]"
             ),
             ClipboardTriggerKeyConfig.localizedString(bindings.closeMenu, "Q")
-        )
+        ).also { Timber.d("Favorites hint: $it") }
     }
 
     private fun isNativeClipboardCloseKey(event: KeyEvent): Boolean =
