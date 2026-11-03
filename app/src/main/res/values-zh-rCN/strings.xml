@@ -337,7 +337,8 @@
     <string name="clipboard_delete_shortcut">删除历史项/取消置顶</string>
     <string name="clipboard_native_addon_settings">剪贴板插件设置</string>
     <string name="clipboard_native_addon_settings_summary">设置触发键与最近历史显示数量</string>
-    <string name="clipboard_native_hint_suffix"> · %1$s置顶 · %2$s删除 · F收藏</string>
+    <string name="clipboard_native_hint_suffix"> · %1$s置顶 · %2$s删除 · F收藏 · %3$s关闭</string>
+    <string name="clipboard_close_key">Q</string>
     <string name="clipboard_pinned_toast">已加入置顶收藏</string>
     <string name="clipboard_recent_deleted_toast">已从最近历史删除</string>
     <string name="clipboard_no_selected_entry">当前没有选中的剪贴板项</string>

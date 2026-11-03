@@ -1019,10 +1019,11 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_getFcitxClipboardCurrentEntry(JNIEnv *e
     RETURN_VALUE_IF_NOT_RUNNING(nullptr)
     const auto entry = Fcitx::Instance().currentClipboardEntry();
     if (!entry.valid) return nullptr;
-    auto array = JRef<jobjectArray>(env, env->NewObjectArray(2, GlobalRef->Object, nullptr));
-    env->SetObjectArrayElement(array, 0, JString(env, entry.text));
-    auto sensitive = JRef(env, env->NewObject(GlobalRef->Boolean, GlobalRef->BooleanInit,
-                                               entry.sensitive));
+    auto array = env->NewObjectArray(2, GlobalRef->Object, nullptr);
+    auto text = JString(env, entry.text);
+    auto sensitive = JRef(env, env->NewObject(
+        GlobalRef->Boolean, GlobalRef->BooleanInit, entry.sensitive));
+    env->SetObjectArrayElement(array, 0, *text);
     env->SetObjectArrayElement(array, 1, *sensitive);
     return array;
 }
@@ -1033,10 +1034,11 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_removeFcitxClipboardCurrentEntry(JNIEnv
     RETURN_VALUE_IF_NOT_RUNNING(nullptr)
     const auto entry = Fcitx::Instance().removeCurrentClipboardEntry();
     if (!entry.valid) return nullptr;
-    auto array = JRef<jobjectArray>(env, env->NewObjectArray(2, GlobalRef->Object, nullptr));
-    env->SetObjectArrayElement(array, 0, JString(env, entry.text));
-    auto sensitive = JRef(env, env->NewObject(GlobalRef->Boolean, GlobalRef->BooleanInit,
-                                               entry.sensitive));
+    auto array = env->NewObjectArray(2, GlobalRef->Object, nullptr);
+    auto text = JString(env, entry.text);
+    auto sensitive = JRef(env, env->NewObject(
+        GlobalRef->Boolean, GlobalRef->BooleanInit, entry.sensitive));
+    env->SetObjectArrayElement(array, 0, *text);
     env->SetObjectArrayElement(array, 1, *sensitive);
     return array;
 }

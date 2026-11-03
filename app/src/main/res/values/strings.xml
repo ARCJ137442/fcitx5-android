@@ -337,7 +337,8 @@
     <string name="clipboard_delete_shortcut">Delete or unpin item</string>
     <string name="clipboard_native_addon_settings">Native clipboard settings</string>
     <string name="clipboard_native_addon_settings_summary">Configure the trigger key and recent-history page size</string>
-    <string name="clipboard_native_hint_suffix"> · %1$s pin · %2$s delete · F favorites</string>
+    <string name="clipboard_native_hint_suffix"> · %1$s pin · %2$s delete · F favorites · %3$s close</string>
+    <string name="clipboard_close_key">Q</string>
     <string name="clipboard_pinned_toast">Added to pinned favorites</string>
     <string name="clipboard_recent_deleted_toast">Removed from recent clipboard history</string>
     <string name="clipboard_no_selected_entry">No clipboard item is selected</string>

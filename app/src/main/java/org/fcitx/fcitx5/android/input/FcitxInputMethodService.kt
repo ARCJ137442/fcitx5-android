@@ -665,7 +665,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 .getOrDefault("D")
             val deleteKey = runCatching { Key.parse(clipboardPrefs.deleteShortcut.getValue()).localizedString }
                 .getOrDefault("X")
-            getString(R.string.clipboard_native_hint_suffix, pinKey, deleteKey)
+            getString(
+                R.string.clipboard_native_hint_suffix,
+                pinKey,
+                deleteKey,
+                getString(R.string.clipboard_close_key)
+            )
         } else {
             null
         }
@@ -978,6 +983,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL
     }
 
+    private fun isNativeClipboardCloseKey(event: KeyEvent): Boolean =
+        !event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed &&
+            !event.isShiftPressed && event.keyCode == KeyEvent.KEYCODE_Q
+
+    private fun closeNativeClipboardMenu() {
+        setNativeClipboardModeActive(false)
+        postFcitxJob {
+            sendKey("Escape", up = false)
+            sendKey("Escape", up = true)
+        }
+    }
+
     private fun handleNativeClipboardAction(event: KeyEvent): Boolean {
         if (!nativeClipboardModeActive) return false
         if (event.repeatCount != 0 && keyEventToken(event) in swallowedHardwareKeyUps) return true
@@ -1056,6 +1073,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (favoritesOverlayOpen) {
             return handleFavoritesKeyDown(event)
+        }
+        if (nativeClipboardModeActive && isNativeClipboardCloseKey(event)) {
+            swallowedHardwareKeyUps += keyEventToken(event)
+            closeNativeClipboardMenu()
+            return true
         }
         if (handleNativeClipboardAction(event)) return true
         if (nativeClipboardModeActive && isFavoritesMenuKey(event)) {
