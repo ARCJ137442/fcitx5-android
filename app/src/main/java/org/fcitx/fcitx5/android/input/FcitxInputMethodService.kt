@@ -658,7 +658,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun updateClipboardModeHint() {
-        val hint = if (nativeClipboardModeActive) {
+        val hint = if (
+            nativeClipboardModeActive && ClipboardTriggerKeyConfig.showShortcutHints()
+        ) {
             val bindings = ClipboardTriggerKeyConfig.bindings()
             val pinKey = ClipboardTriggerKeyConfig.localizedString(bindings.pinToggle, "D")
             val deleteKey = ClipboardTriggerKeyConfig.localizedString(bindings.deleteEntry, "X")
@@ -681,20 +683,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private fun keyEventToken(event: KeyEvent): Long {
         val code = if (event.scanCode != 0) event.scanCode else event.keyCode
         return (event.deviceId.toLong() shl 32) xor (code.toLong() and 0xffffffffL)
-    }
-
-    private fun numberFromKeyEvent(event: KeyEvent): Int? {
-        if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed) {
-            return null
-        }
-        when (event.keyCode) {
-            in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9 ->
-                return event.keyCode - KeyEvent.KEYCODE_0
-            in KeyEvent.KEYCODE_NUMPAD_1..KeyEvent.KEYCODE_NUMPAD_9 ->
-                return event.keyCode - KeyEvent.KEYCODE_NUMPAD_0
-        }
-        val sym = KeySym.fromKeyEvent(event)?.sym ?: return null
-        return if (sym in '1'.code..'9'.code) sym - '0'.code else null
     }
 
     private fun openFavoritesSubmenu(page: Int) {
@@ -809,42 +797,34 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             closeFavoritesSubmenu(returnToNative = true)
             return true
         }
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> if (isCtrlArrow(event)) moveSelectedFavorite(-1)
-                else if (!event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed) {
-                    favoritesOverlay?.moveSelection(-1)
-                }
-            KeyEvent.KEYCODE_DPAD_DOWN -> if (isCtrlArrow(event)) moveSelectedFavorite(1)
-                else if (!event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed) {
-                    favoritesOverlay?.moveSelection(1)
-                }
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_DPAD_CENTER ->
+        when {
+            ClipboardTriggerKeyConfig.matchesMovePinnedUp(event) ->
+                moveSelectedFavorite(-1)
+            ClipboardTriggerKeyConfig.matchesMovePinnedDown(event) ->
+                moveSelectedFavorite(1)
+            ClipboardTriggerKeyConfig.matchesPreviousCandidate(event) ->
+                favoritesOverlay?.moveSelection(-1)
+            ClipboardTriggerKeyConfig.matchesNextCandidate(event) ->
+                favoritesOverlay?.moveSelection(1)
+            ClipboardTriggerKeyConfig.matchesPasteSelected(event) ->
                 favoritesOverlay?.selectCurrent()
-            KeyEvent.KEYCODE_SPACE -> if (isUnmodified(event)) favoritesOverlay?.selectCurrent()
-            else -> when {
-                ClipboardTriggerKeyConfig.matchesPreviousPage(event) -> {
-                    if (favoritesPage > 0) loadFavoritesPage(favoritesPage - 1)
-                }
-                ClipboardTriggerKeyConfig.matchesNextPage(event) -> {
-                    if (favoritesPage + 1 < favoritesPageCount) {
-                        loadFavoritesPage(favoritesPage + 1)
-                    }
-                }
-                ClipboardTriggerKeyConfig.matchesDeleteEntry(event) ->
-                    unpinSelectedFavorite()
-                numberFromKeyEvent(event) != null ->
-                    favoritesOverlay?.selectByNumber(numberFromKeyEvent(event)!!)
-                else -> Unit
+            ClipboardTriggerKeyConfig.matchesPreviousPage(event) -> {
+                if (favoritesPage > 0) loadFavoritesPage(favoritesPage - 1)
             }
+            ClipboardTriggerKeyConfig.matchesNextPage(event) -> {
+                if (favoritesPage + 1 < favoritesPageCount) {
+                    loadFavoritesPage(favoritesPage + 1)
+                }
+            }
+            ClipboardTriggerKeyConfig.matchesDeleteEntry(event) ->
+                unpinSelectedFavorite()
+            ClipboardTriggerKeyConfig.selectionIndex(event) != null ->
+                ClipboardTriggerKeyConfig.selectionIndex(event)?.let { index ->
+                    favoritesOverlay?.selectByNumber(index + 1)
+                }
         }
         return true
     }
-
-    private fun isUnmodified(event: KeyEvent): Boolean =
-        !event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed && !event.isShiftPressed
-
-    private fun isCtrlArrow(event: KeyEvent): Boolean =
-        event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed && !event.isShiftPressed
 
     private fun moveSelectedFavorite(delta: Int) {
         val selected = favoritesOverlay?.currentSelection ?: return
@@ -963,11 +943,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun isNativeClipboardModeExitKey(event: KeyEvent): Boolean {
-        return event.keyCode == KeyEvent.KEYCODE_ESCAPE ||
+        return ClipboardTriggerKeyConfig.matchesNativeReset(event) ||
             ClipboardTriggerKeyConfig.matchesClearHistory(event)
     }
 
-    private fun favoritesHint(): String {
+    private fun favoritesHint(): String? {
+        if (!ClipboardTriggerKeyConfig.showShortcutHints()) return null
         val bindings = ClipboardTriggerKeyConfig.bindings()
         return getString(
             R.string.clipboard_favorites_hint,
@@ -1068,6 +1049,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (favoritesOverlayOpen) {
             return handleFavoritesKeyDown(event)
+        }
+        if (ClipboardTriggerKeyConfig.matchesFavoritesTrigger(event)) {
+            swallowedHardwareKeyUps += keyEventToken(event)
+            if (nativeClipboardModeActive) closeNativeClipboardMenu()
+            openFavoritesSubmenu(page = 0)
+            return true
         }
         if (nativeClipboardModeActive && isNativeClipboardCloseKey(event)) {
             swallowedHardwareKeyUps += keyEventToken(event)

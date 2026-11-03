@@ -19,11 +19,19 @@ class AddonConfigFragment : FcitxPreferenceFragment() {
         if (args.uniqueName == "clipboard") {
             setOf(
                 "TriggerKey",
+                "FavoritesTriggerKey",
                 "FavoritesFilterKey",
                 "PinToggleKey",
                 "DeleteEntryKey",
                 "CloseMenuKey",
+                "NativeResetKey",
                 "ClearHistoryKey",
+                "SelectionKeys",
+                "PasteSelectedKey",
+                "PreviousCandidateKey",
+                "NextCandidateKey",
+                "MovePinnedUpKey",
+                "MovePinnedDownKey",
                 "PreviousPageKey",
                 "NextPageKey"
             )
