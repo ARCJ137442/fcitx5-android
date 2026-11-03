@@ -38,7 +38,7 @@
 
 ## 构建产物
 
-- `app/build/outputs/apk/debug/org.fcitx.fcitx5.android-34e2c9f-arm64-v8a-debug.apk`
+- `app/build/outputs/apk/debug/org.fcitx.fcitx5.android-e72366d-arm64-v8a-debug.apk`
 - `plugin/rime/build/outputs/apk/debug/org.fcitx.fcitx5.android.plugin.rime-a4a34b3-arm64-v8a-debug.apk`
 
 构建已成功；上述设备交互清单尚待人类在平板上验证。
