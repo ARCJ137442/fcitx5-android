@@ -1,6 +1,6 @@
 # Rime 重新部署广播（DEPLOY_RIME）设备实测记录
 
-**状态：设备实测通过（2026-11-04，Android 15 平板）**
+**状态：全链路验收通过（2026-11-04，Android 15 平板）**
 
 ## 背景与结论
 
@@ -20,7 +20,8 @@ fcitx5-rime 的「重新部署」（与输入法 UI 的 Deploy 动作同一条�
 ## 实测环境
 
 - 设备：Android 15 平板
-- 包名：`org.fcitx.fcitx5.android.debug`（versionName `9817e5a` / versionCode `112`）
+- 包名：`org.fcitx.fcitx5.android.debug`（versionName `9817e5a` / versionCode `112`；
+  覆盖安装，应用数据保留）
 - 发送方：rish（Shizuku shell uid 2000），满足 `android.permission.READ_INPUT_STATE` 门禁
 
 ## 实测证据（2026-11-04）
@@ -33,6 +34,23 @@ fcitx5-rime 的「重新部署」（与输入法 UI 的 Deploy 动作同一条�
    出现 `text=联调测试ABC, comment=~zzz`；键盘实测同样看到该候选。
 5. 移除测试短语后再次广播，候选消失（用户确认）；`custom_phrase.txt` 恢复为
    md5 `895b25845009ba847429cf6ae724db1d`、57552 B，与仓库一致。
+
+## 全链路验收（Termux TUI → 广播 → 引擎重载）
+
+- Termux TUI 保存 → 自动提交（3 个仅含 `flypy.txt` 的提交）→ 自动推送 → `DEPLOY_RIME`
+  广播 `result=1` → 状态文件 `dispatched` → 同一输入法进程（pid 17319）重读 `flypy.txt` /
+  `custom_phrase.txt` 并重建引擎；全程未 force-stop。
+- 用户确认：键盘可直接打出新短语，最多一次重新加载，无其他异常。
+
+## 实现契约（2026-11-04 核对）
+
+- 接收器在 `FcitxApplication` 中**运行时注册**：`dumpsys package` 查不到，不要用
+  dumpsys 探测。
+- 广播 result code：`1` = 接受；`2` = 无 fcitx 实例；`0` = 无人接收。
+- 状态文件：`<外部 files 目录>/rime_deploy_status.txt`，格式
+  `<unix 毫秒>\t<accepted|no-instance|dispatched|failed>`。
+- 生效判据：`user.yaml` 的 `last_build_time`（Unix 秒）与状态文件毫秒时间戳对齐；
+  logcat 中同一 pid 出现 `reading tsv file` + `ConcreteEngine::InitializeOptions`。
 
 ## 判据与注意事项
 
@@ -63,3 +81,9 @@ adb shell am broadcast -a org.fcitx.fcitx5.android.debug.action.DEPLOY_RIME
 - 应用侧可进一步把 `user.yaml` 的 `last_build_time` 前移作为完成判据回写状态文件，
   替代当前的 `dispatched` 语义（当前应用侧无法得知维护完成时刻）。
 - 发布资产：`rime-deploy-broadcast-2026-11-04`（prerelease，APK versionName `9817e5a`）。
+
+## 关联
+
+- Issue：<https://github.com/fcitx5-android/fcitx5-android/issues/981>
+- PR：<https://github.com/fcitx5-android/fcitx5-android/pull/982>
+- Release：<https://github.com/ARCJ137442/fcitx5-android/releases/tag/rime-deploy-broadcast-2026-11-04>
