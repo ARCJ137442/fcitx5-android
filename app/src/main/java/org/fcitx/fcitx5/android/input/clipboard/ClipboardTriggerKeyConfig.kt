@@ -179,10 +179,10 @@ object ClipboardTriggerKeyConfig {
         val option = config.findByName(name) ?: return default
         val values = option.subItems?.map { it.value }
             ?: listOf(option.value).filter { it.isNotBlank() }
+        // A missing option falls back to its default, but an explicitly empty
+        // list is a valid value: it means the action has no trigger keys.
         return values.mapNotNull { value ->
             runCatching { Key.parse(value) }.getOrNull()
-        }.ifEmpty {
-            default
         }
     }
 
