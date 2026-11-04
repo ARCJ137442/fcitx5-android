@@ -330,12 +330,25 @@
 
     <string name="clipboard_favorites_load_error">无法读取置顶剪贴内容</string>
     <string name="clipboard_favorites_stale">收藏项已变化，请重新打开列表</string>
+    <string name="clipboard_history_title">剪贴板历史</string>
+    <string name="clipboard_history_search_placeholder">输入文字搜索剪贴板历史…</string>
+    <string name="clipboard_history_search_query">搜索：%1$s▌</string>
+    <string name="clipboard_history_empty">没有匹配的剪贴板内容</string>
+    <string name="clipboard_history_no_history">剪贴板历史还是空的</string>
+    <string name="clipboard_history_entry_description">剪贴板项：%1$s</string>
+    <string name="clipboard_history_hint">直接输入搜索 · 回车粘贴 · ↑↓选择 · Ctrl+P置顶 · Alt+X删除 · Esc关闭</string>
+    <string name="clipboard_history_deleted_toast">已从剪贴板历史删除</string>
+    <string name="clipboard_history_pinned_toast">已加入置顶收藏</string>
+    <string name="clipboard_history_unpinned_toast">已取消置顶</string>
+    <string name="clipboard_history_action_failed">剪贴板操作失败</string>
+    <string name="clipboard_history_stale">剪贴板内容已变化，请重试</string>
+    <string name="clipboard_history_load_error">无法搜索剪贴板历史</string>
     <string name="clipboard_fixed_order">固定置顶顺序</string>
     <string name="clipboard_fixed_order_summary">关闭时按最近使用排序；开启后保持手动排列顺序</string>
     <string name="clipboard_keyboard_shortcuts">键盘快捷键</string>
     <string name="clipboard_native_addon_settings">剪贴板插件设置</string>
     <string name="clipboard_native_addon_settings_summary">设置触发键、菜单动作快捷键与最近历史显示数量</string>
-    <string name="clipboard_native_hint_suffix"> · %1$s置顶 · %2$s删除 · %3$s收藏 · %4$s关闭</string>
+    <string name="clipboard_native_hint_suffix"> · %1$s置顶 · %2$s删除 · %3$s收藏 · %4$s关闭 · %5$s搜索</string>
     <string name="clipboard_pinned_toast">已加入置顶收藏</string>
     <string name="clipboard_recent_deleted_toast">已从最近历史删除</string>
     <string name="clipboard_no_selected_entry">当前没有选中的剪贴板项</string>

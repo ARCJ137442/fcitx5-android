@@ -108,6 +108,20 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
 
     fun allEntries() = clbDao.allEntries()
 
+    suspend fun searchEntries(query: String, limit: Int, offset: Int): List<ClipboardEntry> =
+        clbDao.searchEntries(searchPattern(query), limit, offset)
+
+    suspend fun searchEntryCount(query: String): Int =
+        clbDao.searchEntryCount(searchPattern(query))
+
+    private fun searchPattern(query: String): String {
+        val escaped = query
+            .replace("!", "!!")
+            .replace("%", "!%")
+            .replace("_", "!_")
+        return "%$escaped%"
+    }
+
     suspend fun pinnedEntries(limit: Int, offset: Int): List<ClipboardEntry> {
         return if (fixedPinnedOrderPref.getValue()) {
             ensurePinnedOrderInitialized()
@@ -123,6 +137,13 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
 
     suspend fun usePinned(id: Int): ClipboardEntry? = clbDb.withTransaction {
         val entry = clbDao.getPinned(id) ?: return@withTransaction null
+        val used = entry.copy(timestamp = System.currentTimeMillis())
+        clbDao.updateTime(id, used.timestamp)
+        used
+    }
+
+    suspend fun useEntry(id: Int): ClipboardEntry? = clbDb.withTransaction {
+        val entry = clbDao.get(id) ?: return@withTransaction null
         val used = entry.copy(timestamp = System.currentTimeMillis())
         clbDao.updateTime(id, used.timestamp)
         used

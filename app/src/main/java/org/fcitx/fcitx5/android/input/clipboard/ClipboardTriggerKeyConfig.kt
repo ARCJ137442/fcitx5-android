@@ -25,8 +25,10 @@ object ClipboardTriggerKeyConfig {
     data class Bindings(
         val triggers: List<Key> = listOf(Key.parse("Control+semicolon")),
         val favoritesTriggers: List<Key> = listOf(Key.parse("Alt+Shift+v")),
+        val searchTriggers: List<Key> = listOf(Key.parse("Alt+Shift+f")),
         val showShortcutHints: Boolean = true,
         val favoritesFilter: List<Key> = listOf(Key.parse("f")),
+        val searchFilter: List<Key> = listOf(Key.parse("s")),
         val pinToggle: List<Key> = listOf(Key.parse("d")),
         val deleteEntry: List<Key> = listOf(Key.parse("x")),
         val closeMenu: List<Key> = listOf(Key.parse("q")),
@@ -66,10 +68,16 @@ object ClipboardTriggerKeyConfig {
     fun matchesFavoritesTrigger(event: KeyEvent): Boolean =
         matches(event, configured.favoritesTriggers)
 
+    fun matchesSearchTrigger(event: KeyEvent): Boolean =
+        matches(event, configured.searchTriggers)
+
     fun showShortcutHints(): Boolean = configured.showShortcutHints
 
     fun matchesFavoritesFilter(event: KeyEvent): Boolean =
         matches(event, configured.favoritesFilter)
+
+    fun matchesSearchFilter(event: KeyEvent): Boolean =
+        matches(event, configured.searchFilter)
 
     fun matchesPinToggle(event: KeyEvent): Boolean = matches(event, configured.pinToggle)
 
@@ -131,17 +139,25 @@ object ClipboardTriggerKeyConfig {
         val favoritesTriggers = readKeys(
             config, "FavoritesTriggerKey", defaults.favoritesTriggers
         )
+        val searchTriggers = readKeys(
+            config, "SearchTriggerKey", defaults.searchTriggers
+        )
         configured = Bindings(
             triggers = readKeys(config, "TriggerKey", defaults.triggers)
                 .filterNot { trigger ->
-                    favoritesTriggers.any { favorite -> sameKey(trigger, favorite) }
+                    favoritesTriggers.any { favorite -> sameKey(trigger, favorite) } ||
+                        searchTriggers.any { search -> sameKey(trigger, search) }
                 },
             favoritesTriggers = favoritesTriggers,
+            searchTriggers = searchTriggers,
             showShortcutHints = readBoolean(
                 config, "ShowShortcutHints", defaults.showShortcutHints
             ),
             favoritesFilter = readKeys(
                 config, "FavoritesFilterKey", defaults.favoritesFilter
+            ),
+            searchFilter = readKeys(
+                config, "SearchFilterKey", defaults.searchFilter
             ),
             pinToggle = readKeys(config, "PinToggleKey", defaults.pinToggle),
             deleteEntry = readKeys(config, "DeleteEntryKey", defaults.deleteEntry),

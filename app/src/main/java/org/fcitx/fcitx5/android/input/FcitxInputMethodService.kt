@@ -45,6 +45,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlags
@@ -68,6 +69,7 @@ import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.clipboard.ClipboardFavoritesOverlay
+import org.fcitx.fcitx5.android.input.clipboard.ClipboardHistoryOverlay
 import org.fcitx.fcitx5.android.input.clipboard.ClipboardTriggerKeyConfig
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
@@ -118,6 +120,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var inputContextGeneration = 0
     private var favoritesLoadJob: Job? = null
     private var favoritesOverlay: ClipboardFavoritesOverlay? = null
+
+    private var historyOverlayOpen = false
+    private var historySelectionPending = false
+    private var historyMutationPending = false
+    private var historyPage = 0
+    private var historyPageCount = 1
+    private var historyRequestId = 0
+    private var historyQuery = ""
+    private var historyLoadJob: Job? = null
+    private var historyOverlay: ClipboardHistoryOverlay? = null
+
     private val swallowedHardwareKeyUps = mutableSetOf<Long>()
 
     private val navbarMgr = NavigationBarManager()
@@ -666,13 +679,16 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             val deleteKey = ClipboardTriggerKeyConfig.localizedString(bindings.deleteEntry, "X")
             val favoritesKey =
                 ClipboardTriggerKeyConfig.localizedString(bindings.favoritesFilter, "F")
+            val searchKey =
+                ClipboardTriggerKeyConfig.localizedString(bindings.searchFilter, "S")
             val closeKey = ClipboardTriggerKeyConfig.localizedString(bindings.closeMenu, "Q")
             getString(
                 R.string.clipboard_native_hint_suffix,
                 pinKey,
                 deleteKey,
                 favoritesKey,
-                closeKey
+                closeKey,
+                searchKey
             )
         } else {
             null
@@ -778,8 +794,280 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (!returnToNative) setNativeClipboardModeActive(false)
     }
 
+    private fun openHistoryOverlay() {
+        if (nativeClipboardModeActive) closeNativeClipboardMenu()
+        if (favoritesOverlayOpen) closeFavoritesSubmenu(returnToNative = false)
+        historyQuery = ""
+        historyOverlayOpen = true
+        loadHistoryPage(requestedPage = 0)
+    }
+
+    private fun loadHistoryPage(
+        requestedPage: Int,
+        selectedEntryId: Int? = null,
+        selectedIndex: Int = 0
+    ) {
+        val requestId = ++historyRequestId
+        historyPage = requestedPage.coerceAtLeast(0)
+        historyLoadJob?.cancel()
+        historyLoadJob = lifecycleScope.launch {
+            try {
+                val itemCount = ClipboardManager.searchEntryCount(historyQuery)
+                val pageCount = maxOf(1, (itemCount + HistoryPageSize - 1) / HistoryPageSize)
+                val page = requestedPage.coerceIn(0, pageCount - 1)
+                val entries = ClipboardManager.searchEntries(
+                    historyQuery,
+                    HistoryPageSize,
+                    page * HistoryPageSize
+                )
+                if (requestId != historyRequestId || !historyOverlayOpen) return@launch
+                historyPage = page
+                historyPageCount = pageCount
+                historyOverlay?.let(contentView::removeView)
+                val overlay = ClipboardHistoryOverlay(
+                    context = this@FcitxInputMethodService,
+                    theme = ThemeManager.activeTheme,
+                    entries = entries,
+                    page = page,
+                    pageCount = pageCount,
+                    maskSensitive = AppPrefs.getInstance().clipboard.clipboardMaskSensitive.getValue(),
+                    query = historyQuery,
+                    selectedEntryId = selectedEntryId,
+                    selectedIndex = selectedIndex,
+                    onSelect = ::selectHistoryEntry,
+                    onDismiss = { closeHistoryOverlay() },
+                    hint = historyHint()
+                )
+                historyOverlay = overlay
+                contentView.addView(
+                    overlay,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            } catch (error: Exception) {
+                Timber.w(error, "Failed to search clipboard history")
+                if (requestId != historyRequestId || !historyOverlayOpen) return@launch
+                historyPage = 0
+                historyPageCount = 1
+                historyOverlay?.let(contentView::removeView)
+                val overlay = ClipboardHistoryOverlay(
+                    context = this@FcitxInputMethodService,
+                    theme = ThemeManager.activeTheme,
+                    entries = emptyList(),
+                    page = 0,
+                    pageCount = 1,
+                    maskSensitive = true,
+                    query = historyQuery,
+                    onSelect = ::selectHistoryEntry,
+                    onDismiss = { closeHistoryOverlay() },
+                    hint = historyHint(),
+                    emptyMessage = getString(R.string.clipboard_history_load_error)
+                )
+                historyOverlay = overlay
+                contentView.addView(
+                    overlay,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
+        }
+    }
+
+    private fun closeHistoryOverlay() {
+        historyRequestId++
+        historyLoadJob?.cancel()
+        historyLoadJob = null
+        historyOverlay?.let { overlay ->
+            if (::contentView.isInitialized) contentView.removeView(overlay)
+        }
+        historyOverlay = null
+        historyOverlayOpen = false
+        historySelectionPending = false
+        historyMutationPending = false
+        historyQuery = ""
+    }
+
+    private fun historyHint(): String? =
+        if (ClipboardTriggerKeyConfig.showShortcutHints()) {
+            getString(R.string.clipboard_history_hint)
+        } else {
+            null
+        }
+
+    private fun handleHistoryKeyDown(event: KeyEvent): Boolean {
+        if (!historyOverlayOpen) return false
+        if (event.keyCode == KeyEvent.KEYCODE_ESCAPE || event.keyCode == KeyEvent.KEYCODE_BACK) {
+            swallowedHardwareKeyUps += keyEventToken(event)
+            closeHistoryOverlay()
+            return true
+        }
+        swallowedHardwareKeyUps += keyEventToken(event)
+        if (event.repeatCount != 0 || historySelectionPending || historyMutationPending) return true
+
+        when {
+            event.keyCode == KeyEvent.KEYCODE_PAGE_UP -> {
+                if (historyPage > 0) loadHistoryPage(historyPage - 1)
+            }
+            event.keyCode == KeyEvent.KEYCODE_PAGE_DOWN -> {
+                if (historyPage + 1 < historyPageCount) loadHistoryPage(historyPage + 1)
+            }
+            event.keyCode == KeyEvent.KEYCODE_LEFT_BRACKET -> {
+                if (historyPage > 0) loadHistoryPage(historyPage - 1)
+            }
+            event.keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET -> {
+                if (historyPage + 1 < historyPageCount) loadHistoryPage(historyPage + 1)
+            }
+            event.keyCode == KeyEvent.KEYCODE_DPAD_UP ->
+                historyOverlay?.moveSelection(-1)
+            event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN ->
+                historyOverlay?.moveSelection(1)
+            event.keyCode == KeyEvent.KEYCODE_ENTER ||
+                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER -> historyOverlay?.selectCurrent()
+            event.keyCode == KeyEvent.KEYCODE_DEL -> deleteHistoryQueryCharacter()
+            event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL -> deleteHistoryQueryCharacter()
+            event.keyCode == KeyEvent.KEYCODE_P && (event.isCtrlPressed || event.isAltPressed) ->
+                toggleSelectedHistoryPin()
+            event.keyCode == KeyEvent.KEYCODE_X && event.isAltPressed ->
+                deleteSelectedHistoryEntry()
+            else -> {
+                if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
+                val text = printableText(event)
+                if (text != null) {
+                    appendHistoryQuery(text)
+                }
+            }
+        }
+        return true
+    }
+
+    private fun appendHistoryQuery(text: String) {
+        if (historyQuery.length >= HistoryQueryMaxLength) return
+        historyQuery = (historyQuery + text).take(HistoryQueryMaxLength)
+        scheduleHistoryLoad()
+    }
+
+    private fun deleteHistoryQueryCharacter() {
+        if (historyQuery.isEmpty()) return
+        historyQuery = historyQuery.dropLast(1)
+        scheduleHistoryLoad()
+    }
+
+    private fun scheduleHistoryLoad() {
+        val requestId = ++historyRequestId
+        historyLoadJob?.cancel()
+        historyLoadJob = lifecycleScope.launch {
+            delay(HistorySearchDebounceMs)
+            if (requestId != historyRequestId || !historyOverlayOpen) return@launch
+            loadHistoryPage(requestedPage = 0)
+        }
+    }
+
+    private fun printableText(event: KeyEvent): String? {
+        if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return null
+        val codePoint = event.unicodeChar
+        if (codePoint == 0 || !Character.isValidCodePoint(codePoint)) return null
+        val chars = Character.toChars(codePoint)
+        if (chars.size == 1 && Character.isISOControl(chars[0])) return null
+        return String(chars)
+    }
+
+    private fun selectHistoryEntry(entry: ClipboardEntry) {
+        if (historySelectionPending) return
+        historySelectionPending = true
+        val requestId = historyRequestId
+        val inputGeneration = inputContextGeneration
+        lifecycleScope.launch {
+            val selected = try {
+                ClipboardManager.useEntry(entry.id)
+            } catch (error: Exception) {
+                Timber.w(error, "Failed to read selected clipboard history entry")
+                null
+            }
+            if (requestId != historyRequestId || inputGeneration != inputContextGeneration ||
+                !historyOverlayOpen
+            ) {
+                historySelectionPending = false
+                return@launch
+            }
+            if (selected == null || currentInputConnection == null) {
+                historySelectionPending = false
+                Toast.makeText(
+                    this@FcitxInputMethodService,
+                    R.string.clipboard_history_stale,
+                    Toast.LENGTH_SHORT
+                ).show()
+                loadHistoryPage(historyPage)
+                return@launch
+            }
+            commitText(selected.text)
+            closeHistoryOverlay()
+        }
+    }
+
+    private fun deleteSelectedHistoryEntry() {
+        val selected = historyOverlay?.currentSelection ?: return
+        if (historyMutationPending) return
+        historyMutationPending = true
+        lifecycleScope.launch {
+            try {
+                ClipboardManager.delete(selected.id)
+                Toast.makeText(
+                    this@FcitxInputMethodService,
+                    R.string.clipboard_history_deleted_toast,
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (error: Exception) {
+                Timber.w(error, "Failed to delete clipboard history entry")
+                Toast.makeText(
+                    this@FcitxInputMethodService,
+                    R.string.clipboard_history_action_failed,
+                    Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                historyMutationPending = false
+                loadHistoryPage(historyPage)
+            }
+        }
+    }
+
+    private fun toggleSelectedHistoryPin() {
+        val selected = historyOverlay?.currentSelection ?: return
+        if (historyMutationPending) return
+        historyMutationPending = true
+        lifecycleScope.launch {
+            try {
+                if (selected.pinned) {
+                    ClipboardManager.unpin(selected.id)
+                } else {
+                    ClipboardManager.pin(selected.id)
+                }
+                Toast.makeText(
+                    this@FcitxInputMethodService,
+                    if (selected.pinned) R.string.clipboard_history_unpinned_toast
+                    else R.string.clipboard_history_pinned_toast,
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (error: Exception) {
+                Timber.w(error, "Failed to toggle clipboard history pin")
+                Toast.makeText(
+                    this@FcitxInputMethodService,
+                    R.string.clipboard_history_action_failed,
+                    Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                historyMutationPending = false
+                loadHistoryPage(historyPage, selectedEntryId = selected.id)
+            }
+        }
+    }
+
     private fun clearClipboardQuickAccess() {
         closeFavoritesSubmenu(returnToNative = false)
+        closeHistoryOverlay()
         setNativeClipboardModeActive(false)
         swallowedHardwareKeyUps.clear()
     }
@@ -1050,8 +1338,21 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (historyOverlayOpen) {
+            return handleHistoryKeyDown(event)
+        }
         if (favoritesOverlayOpen) {
             return handleFavoritesKeyDown(event)
+        }
+        if (nativeClipboardModeActive && ClipboardTriggerKeyConfig.matchesSearchFilter(event)) {
+            swallowedHardwareKeyUps += keyEventToken(event)
+            openHistoryOverlay()
+            return true
+        }
+        if (ClipboardTriggerKeyConfig.matchesSearchTrigger(event)) {
+            swallowedHardwareKeyUps += keyEventToken(event)
+            openHistoryOverlay()
+            return true
         }
         if (ClipboardTriggerKeyConfig.matchesFavoritesTrigger(event)) {
             swallowedHardwareKeyUps += keyEventToken(event)
@@ -1086,6 +1387,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (historyOverlayOpen &&
+            (event.keyCode == KeyEvent.KEYCODE_ESCAPE || event.keyCode == KeyEvent.KEYCODE_BACK)
+        ) {
+            swallowedHardwareKeyUps.remove(keyEventToken(event))
+            return super.onKeyUp(keyCode, event)
+        }
         if (swallowedHardwareKeyUps.remove(keyEventToken(event))) return true
         if (favoritesOverlayOpen &&
             (event.keyCode == KeyEvent.KEYCODE_ESCAPE || event.keyCode == KeyEvent.KEYCODE_BACK)
@@ -1562,6 +1869,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     @Suppress("ConstPropertyName")
     companion object {
         private const val FavoritesPageSize = 9
+        private const val HistoryPageSize = 10
+        private const val HistoryQueryMaxLength = 128
+        private const val HistorySearchDebounceMs = 80L
         const val DefaultHighlightColor = 0x008577  // material_deep_teal_500
         const val DeleteSurroundingFlag = "org.fcitx.fcitx5.android.DELETE_SURROUNDING"
     }

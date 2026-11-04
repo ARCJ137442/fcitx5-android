@@ -330,12 +330,25 @@
 
     <string name="clipboard_favorites_load_error">Could not load pinned clipboard items</string>
     <string name="clipboard_favorites_stale">Favorite changed; reopen the list</string>
+    <string name="clipboard_history_title">Clipboard history</string>
+    <string name="clipboard_history_search_placeholder">Type to search clipboard history…</string>
+    <string name="clipboard_history_search_query">Search: %1$s▌</string>
+    <string name="clipboard_history_empty">No matching clipboard items</string>
+    <string name="clipboard_history_no_history">No clipboard history yet</string>
+    <string name="clipboard_history_entry_description">Clipboard item: %1$s</string>
+    <string name="clipboard_history_hint">Type to search · Enter paste · ↑↓ select · Ctrl+P pin · Alt+X delete · Esc close</string>
+    <string name="clipboard_history_deleted_toast">Removed from clipboard history</string>
+    <string name="clipboard_history_pinned_toast">Added to pinned favorites</string>
+    <string name="clipboard_history_unpinned_toast">Removed from pinned favorites</string>
+    <string name="clipboard_history_action_failed">Clipboard action failed</string>
+    <string name="clipboard_history_stale">Clipboard item changed; try again</string>
+    <string name="clipboard_history_load_error">Could not search clipboard history</string>
     <string name="clipboard_fixed_order">Keep pinned order</string>
     <string name="clipboard_fixed_order_summary">Keep a manual order for pinned items instead of moving the most recently used item to the top</string>
     <string name="clipboard_keyboard_shortcuts">Keyboard shortcuts</string>
     <string name="clipboard_native_addon_settings">Native clipboard settings</string>
     <string name="clipboard_native_addon_settings_summary">Configure trigger keys, menu actions, and recent-history page size</string>
-    <string name="clipboard_native_hint_suffix"> · %1$s pin · %2$s delete · %3$s favorites · %4$s close</string>
+    <string name="clipboard_native_hint_suffix"> · %1$s pin · %2$s delete · %3$s favorites · %4$s close · %5$s search</string>
     <string name="clipboard_pinned_toast">Added to pinned favorites</string>
     <string name="clipboard_recent_deleted_toast">Removed from recent clipboard history</string>
     <string name="clipboard_no_selected_entry">No clipboard item is selected</string>
