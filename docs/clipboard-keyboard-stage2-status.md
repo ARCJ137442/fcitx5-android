@@ -1,6 +1,6 @@
 # 剪贴板键盘操作第二阶段
 
-**状态：待人类实测验证**
+**状态：主体键盘操作已设备验证；剪贴板历史搜索面板待设备实测。**
 
 **构建：** 2026-11-03，arm64 Debug APK；包名未变。
 
@@ -52,3 +52,24 @@
 - `plugin/rime/build/outputs/apk/debug/org.fcitx.fcitx5.android.plugin.rime-a4a34b3-arm64-v8a-debug.apk`
 
 构建已成功；上述设备交互清单尚待人类在平板上验证。
+
+## 2026-11-04 空键列表修复验收
+
+`bb5c58e`（cherry-pick 到 `codex/rime-deploy-broadcast` 为 `b08ec30`）在 Android 15 平板上通过实测：
+
+- `pm install -r` 覆盖安装（versionCode 112，数据保留；输入法进程 pid 31915，未 force-stop）。
+- `clipboard.conf` 中 `FavoritesTriggerKey=` 确认为空值，用户此前的「取消」确已保存。
+- `Alt+Shift+V` 不再被拦截，按键放行给远端应用；改回 `Alt+Shift+B` 恢复置顶页；重启输入法后行为保持。
+- `Ctrl+;` 唤起、数字选择等原有剪贴板功能未见回归。
+- Release：`clipboard-empty-trigger-2026-11-04`（标题已改标「设备实测通过」，资产 SHA-256 `7ABAB671…5C0CA`）。
+
+## 2026-11-05 剪贴板历史搜索（待实测）
+
+- 分支/提交：`codex/rime-deploy-broadcast` `ab28f8f`，核心子模块 `codex/clipboard-history-actions` `5ddb9ab`。
+- 新增 `ClipboardHistoryOverlay`：直接输入字符即搜（Room 历史库，80ms 防抖）、`Backspace`/`Delete` 退格、`↑↓` 选择、`Enter` 粘贴、`Esc` 关闭、`[`/`]` 与 `PageUp`/`PageDown` 翻页（每页 10 项）。
+- 入口：全局 `Alt+Shift+F`（核心配置 `SearchTriggerKey`）；原生 `Ctrl+;` 面板内按 `S`（`SearchFilterKey`）。
+- 面板内动作：`Ctrl+P`/`Alt+P` 置顶切换、`Alt+X` 删除选中项。
+- 核心插件新增 `CandidatePageSize`（每页候选数，默认 10），原生 `Ctrl+;` 面板按该值分页。
+- 修正 `SelectionKeys`：默认 `1..9,0` 沿用数字位置匹配；自定义顺序/删项按实际键列表匹配；空列表不回退默认。
+- Release：`clipboard-history-search-2026-11-05`（prerelease，资产 `fcitx5-android-clipboard-history-search-arm64-v8a-debug.apk`，SHA-256 `91CDC23F…1AD19A`，versionCode 112，versionName 显示 `b08ec30`）。
+- 已知限制：仅文本剪贴项；需开启「记录剪贴板历史」并调整历史上限；搜索面板内 `[`/`]` 固定用于翻页。
