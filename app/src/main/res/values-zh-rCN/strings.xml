@@ -336,7 +336,7 @@
     <string name="clipboard_history_empty">没有匹配的剪贴板内容</string>
     <string name="clipboard_history_no_history">剪贴板历史还是空的</string>
     <string name="clipboard_history_entry_description">剪贴板项：%1$s</string>
-    <string name="clipboard_history_hint">直接输入搜索 · 回车粘贴 · ↑↓选择 · Ctrl+P置顶 · Alt+X删除 · Esc关闭</string>
+    <string name="clipboard_history_hint">直接输入搜索 · 回车粘贴 · Tab/↑↓切换 · Ctrl/Alt+1–0 直接粘贴 · Ctrl+P置顶 · Alt+X删除 · 退格删字/空时退出 · Esc关闭</string>
     <string name="clipboard_history_deleted_toast">已从剪贴板历史删除</string>
     <string name="clipboard_history_pinned_toast">已加入置顶收藏</string>
     <string name="clipboard_history_unpinned_toast">已取消置顶</string>

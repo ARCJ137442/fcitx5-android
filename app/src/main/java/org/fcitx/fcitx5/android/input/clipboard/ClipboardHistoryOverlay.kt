@@ -205,6 +205,20 @@ class ClipboardHistoryOverlay(
         scrollView.post { scrollView.smoothScrollTo(0, rows[selectedIndex].root.top) }
     }
 
+    fun cycleSelection(delta: Int) {
+        if (rows.isEmpty()) return
+        selectedIndex = Math.floorMod(selectedIndex + delta, rows.size)
+        updateSelection()
+        scrollView.post { scrollView.smoothScrollTo(0, rows[selectedIndex].root.top) }
+    }
+
+    fun selectByNumber(number: Int): ClipboardEntry? {
+        val index = if (number == 0) 9 else number - 1
+        val entry = entries.getOrNull(index) ?: return null
+        onSelect(entry)
+        return entry
+    }
+
     fun selectCurrent(): ClipboardEntry? {
         val entry = rows.getOrNull(selectedIndex)?.entry ?: return null
         onSelect(entry)

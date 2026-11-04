@@ -925,10 +925,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 historyOverlay?.moveSelection(-1)
             event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN ->
                 historyOverlay?.moveSelection(1)
+            event.keyCode == KeyEvent.KEYCODE_TAB ->
+                historyOverlay?.cycleSelection(if (event.isShiftPressed) -1 else 1)
             event.keyCode == KeyEvent.KEYCODE_ENTER ||
                 event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER -> historyOverlay?.selectCurrent()
             event.keyCode == KeyEvent.KEYCODE_DEL -> deleteHistoryQueryCharacter()
             event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL -> deleteHistoryQueryCharacter()
+            (event.isCtrlPressed || event.isAltPressed) &&
+                event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 ->
+                historyOverlay?.selectByNumber(event.keyCode - KeyEvent.KEYCODE_0)
+            (event.isCtrlPressed || event.isAltPressed) &&
+                event.keyCode in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ->
+                historyOverlay?.selectByNumber(event.keyCode - KeyEvent.KEYCODE_NUMPAD_0)
             event.keyCode == KeyEvent.KEYCODE_P && (event.isCtrlPressed || event.isAltPressed) ->
                 toggleSelectedHistoryPin()
             event.keyCode == KeyEvent.KEYCODE_X && event.isAltPressed ->
@@ -951,7 +959,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun deleteHistoryQueryCharacter() {
-        if (historyQuery.isEmpty()) return
+        if (historyQuery.isEmpty()) {
+            closeHistoryOverlay()
+            return
+        }
         historyQuery = historyQuery.dropLast(1)
         scheduleHistoryLoad()
     }

@@ -26,6 +26,7 @@ object ClipboardTriggerKeyConfig {
         val triggers: List<Key> = listOf(Key.parse("Control+semicolon")),
         val favoritesTriggers: List<Key> = listOf(Key.parse("Alt+Shift+v")),
         val searchTriggers: List<Key> = listOf(Key.parse("Alt+Shift+f")),
+        val secondarySearchTriggers: List<Key> = emptyList(),
         val showShortcutHints: Boolean = true,
         val favoritesFilter: List<Key> = listOf(Key.parse("f")),
         val searchFilter: List<Key> = listOf(Key.parse("s")),
@@ -69,7 +70,8 @@ object ClipboardTriggerKeyConfig {
         matches(event, configured.favoritesTriggers)
 
     fun matchesSearchTrigger(event: KeyEvent): Boolean =
-        matches(event, configured.searchTriggers)
+        matches(event, configured.searchTriggers) ||
+            matches(event, configured.secondarySearchTriggers)
 
     fun showShortcutHints(): Boolean = configured.showShortcutHints
 
@@ -142,14 +144,19 @@ object ClipboardTriggerKeyConfig {
         val searchTriggers = readKeys(
             config, "SearchTriggerKey", defaults.searchTriggers
         )
+        val secondarySearchTriggers = readKeys(
+            config, "SearchTriggerKeySecondary", defaults.secondarySearchTriggers
+        )
         configured = Bindings(
             triggers = readKeys(config, "TriggerKey", defaults.triggers)
                 .filterNot { trigger ->
                     favoritesTriggers.any { favorite -> sameKey(trigger, favorite) } ||
-                        searchTriggers.any { search -> sameKey(trigger, search) }
+                        searchTriggers.any { search -> sameKey(trigger, search) } ||
+                        secondarySearchTriggers.any { search -> sameKey(trigger, search) }
                 },
             favoritesTriggers = favoritesTriggers,
             searchTriggers = searchTriggers,
+            secondarySearchTriggers = secondarySearchTriggers,
             showShortcutHints = readBoolean(
                 config, "ShowShortcutHints", defaults.showShortcutHints
             ),
