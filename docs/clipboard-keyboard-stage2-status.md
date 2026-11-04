@@ -73,3 +73,13 @@
 - 修正 `SelectionKeys`：默认 `1..9,0` 沿用数字位置匹配；自定义顺序/删项按实际键列表匹配；空列表不回退默认。
 - Release：`clipboard-history-search-2026-11-05`（prerelease，资产 `fcitx5-android-clipboard-history-search-arm64-v8a-debug.apk`，SHA-256 `91CDC23F…1AD19A`，versionCode 112，versionName 显示 `b08ec30`）。
 - 已知限制：仅文本剪贴项；需开启「记录剪贴板历史」并调整历史上限；搜索面板内 `[`/`]` 固定用于翻页。
+
+## 2026-11-05 搜索交互补丁（待实测）
+
+- 分支/提交：`codex/rime-deploy-broadcast` `bde10c3`，核心子模块 `codex/clipboard-history-actions` `7d83976`。
+- 空输入返回：搜索框为空时按 Backspace/Delete 关闭面板；有输入时先逐字删除。
+- 键位语义：空格只作为搜索字符，不触发粘贴；仅 Enter / 小键盘 Enter 上屏；Tab / Shift+Tab 在列表中前后循环（首尾环绕）。
+- `Ctrl/Alt+1..9/0`：直接粘贴列表第 1..10 项。
+- 新增核心配置 `SearchTriggerKeySecondary`（“Additional clipboard history search trigger keys”），默认空列表；与现有 `SearchTriggerKey`（默认 Alt+Shift+F）并存。
+- Release：`clipboard-search-ux-2026-11-05`（prerelease，资产 `fcitx5-android-clipboard-search-ux-arm64-v8a-debug.apk`，SHA-256 `8F3CA261…AF752`，versionName `bde10c3`，versionCode 112）。
+- 未包含：搜索框接收软键盘/IME 输入。当前面板覆盖输入法窗口且只处理硬件 `KeyEvent`；要支持需同时改「面板不遮挡键盘」与「软键盘 KeyAction 路由」，拼音上屏还需拦截 commit 事件，先确认语义（原始按键 vs 完整 IME 上屏）。
