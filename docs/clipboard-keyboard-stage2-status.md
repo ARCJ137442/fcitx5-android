@@ -106,4 +106,4 @@
 - 装后核验：`versionName=85aaee4`、`versionCode=112`；数据保留（`clipboard.conf` 中 `FavoritesTriggerKey=` 仍为空，`CandidatePageSize` / `SearchTriggerKey` / `SelectionKeys` 均为注释默认值）；输入法进程 pid 16880；`logcat` 4000 行内无 `FATAL EXCEPTION` / ANR。
 - 用户验收（原话「功能验证基本完成」）：搜索框可直接用输入法输入文字搜索（方案 B 生效）、退格正常、触屏正常。
 - 仍欠：H3 `DEPLOY_RIME` 广播回归（本次未跑；脚本在 `result=0` 时会退回 `am force-stop`，待择机单独验证后回填）。本次改动不涉及部署/广播路径。
-- 设备侧限制：该平板拒绝 shell/USB 安装 APK，后续联调需继续用 MT 管理器手动覆盖，或检查系统「USB 安装」开关是否被自动关闭。
+- 设备侧限制（已解除）：该平板一度拒绝 shell/USB 安装 APK（`INSTALL_FAILED_USER_RESTRICTED`）；用户重启设备后 USB 安装恢复正常，后续联调可继续用 `adb` 安装，MT 管理器仅作备用。
