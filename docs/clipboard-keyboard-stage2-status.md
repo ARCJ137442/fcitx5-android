@@ -98,3 +98,12 @@
   - 打开/关闭面板都会 `reset()` 引擎组合态并清空 preedit，避免组合串泄漏到编辑器。
 - Release：`clipboard-search-ime-2026-11-05`（prerelease，资产 `fcitx5-android-clipboard-search-ime-arm64-v8a-debug.apk`，SHA-256 `153316D2…CEF3A`，versionCode 112，versionName `85aaee4`）。
 - 已知限制：面板打开时目标应用不可点击（模态面板）；物理键盘模式下浮动候选窗位置仍跟随编辑器光标；搜索仍只覆盖文本剪贴项。
+
+## 2026-11-05 设备实测通过（85aaee4）
+
+- 构建：`85aaee4`（versionName `85aaee4`，versionCode `112`）。
+- 安装：`pm install -r` 被 HyperOS 拒绝（`INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`，`--user 0` 无效，屏幕已唤醒）；中转副本与设备 `base.apk` MD5 均为 `1b36209318edb1c5141adbf21961f771`，与 Release 资产一致，排除包问题。最终由用户用 MT 管理器手动覆盖安装成功。
+- 装后核验：`versionName=85aaee4`、`versionCode=112`；数据保留（`clipboard.conf` 中 `FavoritesTriggerKey=` 仍为空，`CandidatePageSize` / `SearchTriggerKey` / `SelectionKeys` 均为注释默认值）；输入法进程 pid 16880；`logcat` 4000 行内无 `FATAL EXCEPTION` / ANR。
+- 用户验收（原话「功能验证基本完成」）：搜索框可直接用输入法输入文字搜索（方案 B 生效）、退格正常、触屏正常。
+- 仍欠：H3 `DEPLOY_RIME` 广播回归（本次未跑；脚本在 `result=0` 时会退回 `am force-stop`，待择机单独验证后回填）。本次改动不涉及部署/广播路径。
+- 设备侧限制：该平板拒绝 shell/USB 安装 APK，后续联调需继续用 MT 管理器手动覆盖，或检查系统「USB 安装」开关是否被自动关闭。
