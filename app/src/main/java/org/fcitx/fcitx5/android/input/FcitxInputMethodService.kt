@@ -128,6 +128,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var historyPageCount = 1
     private var historyRequestId = 0
     private var historyQuery = ""
+    private var historyClientPreedit = ""
+    private var historyPanelPreedit = ""
+    private var historyPreedit = ""
     private var historyLoadJob: Job? = null
     private var historyOverlay: ClipboardHistoryOverlay? = null
 
@@ -146,6 +149,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         window.window?.let {
             navbarMgr.evaluate(it, isVirtualKeyboard)
+        }
+        // Keep the search panel clear of the keyboard when the input device changes
+        if (historyOverlayOpen) {
+            historyOverlay?.layoutParams = historyOverlayLayoutParams()
+            refreshTouchableInsets()
         }
     }
 
@@ -268,9 +276,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         when (event) {
             is FcitxEvent.CommitStringEvent -> {
                 setNativeClipboardModeActive(false)
-                commitText(event.data.text, event.data.cursor)
+                if (historyOverlayOpen) {
+                    clearHistoryPreedit()
+                    appendHistoryInput(event.data.text)
+                } else {
+                    commitText(event.data.text, event.data.cursor)
+                }
             }
             is FcitxEvent.KeyEvent -> event.data.let event@{
+                if (historyOverlayOpen) {
+                    handleHistoryEngineKey(it)
+                    return@event
+                }
                 if (it.states.virtual) {
                     // KeyEvent from virtual keyboard
                     when (it.sym.sym) {
@@ -340,11 +357,27 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 }
             }
             is FcitxEvent.ClientPreeditEvent -> {
-                updateComposingText(event.data)
+                if (historyOverlayOpen) {
+                    setHistoryClientPreedit(event.data.toString())
+                } else {
+                    updateComposingText(event.data)
+                }
+            }
+            is FcitxEvent.InputPanelEvent -> {
+                // IMs that do not use client preedit still show composition in
+                // the input panel, mirror it into the search box as a fallback
+                if (historyOverlayOpen) {
+                    setHistoryPanelPreedit(event.data.preedit.toString())
+                }
             }
             is FcitxEvent.DeleteSurroundingEvent -> {
-                val (before, after) = event.data
-                handleDeleteSurrounding(before, after)
+                if (historyOverlayOpen) {
+                    val (before, _) = event.data
+                    deleteHistoryQueryCharacters(before)
+                } else {
+                    val (before, after) = event.data
+                    handleDeleteSurrounding(before, after)
+                }
             }
             is FcitxEvent.IMChangeEvent -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -384,6 +417,66 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         } else {
             ic.deleteSurroundingText(before, after)
         }
+    }
+
+    /**
+     * The clipboard search panel owns all text input while it is open: keys the
+     * fcitx engine forwards back to the client must act on the search query
+     * instead of the editor.
+     */
+    private fun handleHistoryEngineKey(event: FcitxEvent.KeyEvent.Data) {
+        if (!historyOverlayOpen) return
+        if (event.states.virtual) {
+            when (event.sym.sym) {
+                FcitxKeyMapping.FcitxKey_BackSpace -> deleteHistoryQueryCharacter()
+                FcitxKeyMapping.FcitxKey_Return -> historyOverlay?.selectCurrent()
+                FcitxKeyMapping.FcitxKey_Escape -> closeHistoryOverlay()
+                FcitxKeyMapping.FcitxKey_Left,
+                FcitxKeyMapping.FcitxKey_Right -> {}
+                else -> if (event.unicode > 0) {
+                    appendHistoryInput(Character.toString(event.unicode))
+                }
+            }
+            return
+        }
+        // Hardware key forwarded back by the engine, use the cached original if available
+        val keyEvent = cachedKeyEvents.remove(event.timestamp)
+        if (event.up || keyEvent?.action == KeyEvent.ACTION_UP) return
+        val keyCode = keyEvent?.keyCode ?: event.sym.keyCode
+        when (keyCode) {
+            KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL -> deleteHistoryQueryCharacter()
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> historyOverlay?.selectCurrent()
+            KeyEvent.KEYCODE_ESCAPE -> closeHistoryOverlay()
+            KeyEvent.KEYCODE_DPAD_UP -> historyOverlay?.moveSelection(-1)
+            KeyEvent.KEYCODE_DPAD_DOWN -> historyOverlay?.moveSelection(1)
+            else -> {
+                val unicode = keyEvent?.unicodeChar ?: event.unicode
+                if (unicode > 0) appendHistoryInput(Character.toString(unicode))
+            }
+        }
+    }
+
+    private fun setHistoryClientPreedit(preedit: String) {
+        historyClientPreedit = preedit
+        refreshHistoryPreedit()
+    }
+
+    private fun setHistoryPanelPreedit(preedit: String) {
+        historyPanelPreedit = preedit
+        refreshHistoryPreedit()
+    }
+
+    private fun clearHistoryPreedit() {
+        historyClientPreedit = ""
+        historyPanelPreedit = ""
+        refreshHistoryPreedit()
+    }
+
+    private fun refreshHistoryPreedit() {
+        val preedit = historyClientPreedit.ifEmpty { historyPanelPreedit }
+        if (historyPreedit == preedit) return
+        historyPreedit = preedit
+        historyOverlay?.setPreedit(preedit)
     }
 
     private fun handleBackspaceKey() {
@@ -458,6 +551,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun commitText(text: String, cursor: Int = -1) {
+        if (historyOverlayOpen) {
+            // The search panel owns text input while it is open, so input method
+            // commits extend the query instead of reaching the editor
+            clearHistoryPreedit()
+            appendHistoryInput(text)
+            return
+        }
+        commitTextToEditor(text, cursor)
+    }
+
+    private fun commitTextToEditor(text: String, cursor: Int = -1) {
         val ic = currentInputConnection ?: return
         // when composing text equals commit content, finish composing text as-is
         if (composing.isNotEmpty() && composingText.toString() == text) {
@@ -640,7 +744,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             outInsets.apply {
                 contentTopInsets = inputViewLocation[1]
                 visibleTopInsets = inputViewLocation[1]
-                touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
             }
         } else {
             val n = decorView.findViewById<View>(android.R.id.navigationBarBackground)?.height ?: 0
@@ -648,9 +751,23 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             outInsets.apply {
                 contentTopInsets = h
                 visibleTopInsets = h
-                touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
             }
         }
+        // Clipboard panels (history search / pinned favorites) live above the keyboard,
+        // outside the default touchable insets. Expand the touchable region to the whole
+        // window while one of them is open so taps reach the panel.
+        if (historyOverlayOpen || favoritesOverlayOpen) {
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+            outInsets.touchableRegion.set(0, 0, decorView.width, decorView.height)
+        } else {
+            outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
+            outInsets.touchableRegion.setEmpty()
+        }
+    }
+
+    private fun refreshTouchableInsets() {
+        if (!::decorView.isInitialized) return
+        decorView.requestLayout()
     }
 
     // always show InputView since we delegate CandidatesView's visibility to it
@@ -703,6 +820,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private fun openFavoritesSubmenu(page: Int) {
         favoritesOverlayOpen = true
+        refreshTouchableInsets()
         loadFavoritesPage(page)
     }
 
@@ -781,6 +899,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun closeFavoritesSubmenu(returnToNative: Boolean) {
+        val wasOpen = favoritesOverlayOpen
         favoritesRequestId++
         favoritesLoadJob?.cancel()
         favoritesLoadJob = null
@@ -792,14 +911,53 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         favoritesSelectionPending = false
         favoritesMutationPending = false
         if (!returnToNative) setNativeClipboardModeActive(false)
+        if (wasOpen) refreshTouchableInsets()
     }
 
     private fun openHistoryOverlay() {
         if (nativeClipboardModeActive) closeNativeClipboardMenu()
         if (favoritesOverlayOpen) closeFavoritesSubmenu(returnToNative = false)
         historyQuery = ""
+        historyClientPreedit = ""
+        historyPanelPreedit = ""
+        historyPreedit = ""
         historyOverlayOpen = true
+        // Start from a clean engine state so leftover composition never leaks in
+        resetComposingState()
+        currentInputConnection?.finishComposingText()
+        postFcitxJob { reset() }
+        // Search takes IME input, so make sure the soft keyboard (not a clipboard
+        // browser page) occupies the keyboard area
+        if (inputDeviceMgr.isVirtualKeyboard) inputView?.showKeyboardWindow()
+        refreshTouchableInsets()
         loadHistoryPage(requestedPage = 0)
+    }
+
+    /**
+     * The panel covers the area above the keyboard only, so the soft keyboard
+     * stays visible and usable for input method composition.
+     */
+    private fun historyOverlayLayoutParams(): FrameLayout.LayoutParams {
+        val keyboardHeight = if (inputDeviceMgr.isVirtualKeyboard) {
+            inputView?.keyboardView?.height ?: 0
+        } else {
+            0
+        }
+        return FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ).apply {
+            bottomMargin = keyboardHeight
+        }
+    }
+
+    private fun historyPanelMaxHeight(): Int {
+        val keyboardHeight = if (inputDeviceMgr.isVirtualKeyboard) {
+            inputView?.keyboardView?.height ?: 0
+        } else {
+            0
+        }
+        return (contentView.height - keyboardHeight - dp(24)).coerceAtLeast(dp(120))
     }
 
     private fun loadHistoryPage(
@@ -836,16 +994,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     selectedIndex = selectedIndex,
                     onSelect = ::selectHistoryEntry,
                     onDismiss = { closeHistoryOverlay() },
-                    hint = historyHint()
+                    hint = historyHint(),
+                    preedit = historyPreedit,
+                    maxPanelHeight = historyPanelMaxHeight()
                 )
                 historyOverlay = overlay
-                contentView.addView(
-                    overlay,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
+                contentView.addView(overlay, historyOverlayLayoutParams())
+                candidatesView?.bringToFront()
             } catch (error: Exception) {
                 Timber.w(error, "Failed to search clipboard history")
                 if (requestId != historyRequestId || !historyOverlayOpen) return@launch
@@ -863,21 +1018,19 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     onSelect = ::selectHistoryEntry,
                     onDismiss = { closeHistoryOverlay() },
                     hint = historyHint(),
-                    emptyMessage = getString(R.string.clipboard_history_load_error)
+                    emptyMessage = getString(R.string.clipboard_history_load_error),
+                    preedit = historyPreedit,
+                    maxPanelHeight = historyPanelMaxHeight()
                 )
                 historyOverlay = overlay
-                contentView.addView(
-                    overlay,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
+                contentView.addView(overlay, historyOverlayLayoutParams())
+                candidatesView?.bringToFront()
             }
         }
     }
 
     private fun closeHistoryOverlay() {
+        val wasOpen = historyOverlayOpen
         historyRequestId++
         historyLoadJob?.cancel()
         historyLoadJob = null
@@ -889,6 +1042,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         historySelectionPending = false
         historyMutationPending = false
         historyQuery = ""
+        historyClientPreedit = ""
+        historyPanelPreedit = ""
+        historyPreedit = ""
+        if (wasOpen) {
+            // Drop any composition started for the search box so it can't leak
+            // into the editor after the panel is gone
+            postFcitxJob { reset() }
+            refreshTouchableInsets()
+        }
     }
 
     private fun historyHint(): String? =
@@ -898,6 +1060,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             null
         }
 
+    /**
+     * Routes hardware keys while the clipboard search panel is open.
+     *
+     * Search text is produced by the fcitx engine, so Chinese composition works
+     * exactly like in an editor. Panel shortcuts and list navigation are handled
+     * here whenever the IME is not composing.
+     */
     private fun handleHistoryKeyDown(event: KeyEvent): Boolean {
         if (!historyOverlayOpen) return false
         if (event.keyCode == KeyEvent.KEYCODE_ESCAPE || event.keyCode == KeyEvent.KEYCODE_BACK) {
@@ -905,51 +1074,78 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             closeHistoryOverlay()
             return true
         }
-        swallowedHardwareKeyUps += keyEventToken(event)
+        // Modifier-only keys keep flowing to the engine so its key state is current
+        if (KeyEvent.isModifierKey(event.keyCode)) return false
+
+        val token = keyEventToken(event)
+        swallowedHardwareKeyUps += token
         if (event.repeatCount != 0 || historySelectionPending || historyMutationPending) return true
 
+        // Panel shortcuts stay active even while the IME is composing
+        val ctrlAlt = event.isCtrlPressed || event.isAltPressed
         when {
-            event.keyCode == KeyEvent.KEYCODE_PAGE_UP -> {
-                if (historyPage > 0) loadHistoryPage(historyPage - 1)
-            }
-            event.keyCode == KeyEvent.KEYCODE_PAGE_DOWN -> {
-                if (historyPage + 1 < historyPageCount) loadHistoryPage(historyPage + 1)
-            }
-            event.keyCode == KeyEvent.KEYCODE_LEFT_BRACKET -> {
-                if (historyPage > 0) loadHistoryPage(historyPage - 1)
-            }
-            event.keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET -> {
-                if (historyPage + 1 < historyPageCount) loadHistoryPage(historyPage + 1)
-            }
-            event.keyCode == KeyEvent.KEYCODE_DPAD_UP ->
-                historyOverlay?.moveSelection(-1)
-            event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN ->
-                historyOverlay?.moveSelection(1)
-            event.keyCode == KeyEvent.KEYCODE_TAB ->
-                historyOverlay?.cycleSelection(if (event.isShiftPressed) -1 else 1)
-            event.keyCode == KeyEvent.KEYCODE_ENTER ||
-                event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER -> historyOverlay?.selectCurrent()
-            event.keyCode == KeyEvent.KEYCODE_DEL -> deleteHistoryQueryCharacter()
-            event.keyCode == KeyEvent.KEYCODE_FORWARD_DEL -> deleteHistoryQueryCharacter()
-            (event.isCtrlPressed || event.isAltPressed) &&
-                event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 ->
+            ctrlAlt && event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
                 historyOverlay?.selectByNumber(event.keyCode - KeyEvent.KEYCODE_0)
-            (event.isCtrlPressed || event.isAltPressed) &&
-                event.keyCode in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ->
+                return true
+            }
+            ctrlAlt && event.keyCode in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 -> {
                 historyOverlay?.selectByNumber(event.keyCode - KeyEvent.KEYCODE_NUMPAD_0)
-            event.keyCode == KeyEvent.KEYCODE_P && (event.isCtrlPressed || event.isAltPressed) ->
+                return true
+            }
+            ctrlAlt && event.keyCode == KeyEvent.KEYCODE_P -> {
                 toggleSelectedHistoryPin()
-            event.keyCode == KeyEvent.KEYCODE_X && event.isAltPressed ->
+                return true
+            }
+            event.isAltPressed && event.keyCode == KeyEvent.KEYCODE_X -> {
                 deleteSelectedHistoryEntry()
+                return true
+            }
+            event.keyCode == KeyEvent.KEYCODE_TAB -> {
+                historyOverlay?.cycleSelection(if (event.isShiftPressed) -1 else 1)
+                return true
+            }
+            event.keyCode == KeyEvent.KEYCODE_PAGE_UP ||
+                event.keyCode == KeyEvent.KEYCODE_LEFT_BRACKET -> {
+                if (historyPage > 0) loadHistoryPage(historyPage - 1)
+                return true
+            }
+            event.keyCode == KeyEvent.KEYCODE_PAGE_DOWN ||
+                event.keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET -> {
+                if (historyPage + 1 < historyPageCount) loadHistoryPage(historyPage + 1)
+                return true
+            }
+            event.isCtrlPressed || event.isAltPressed || event.isMetaPressed -> {
+                // Other combinations belong to the panel, never to the editor
+                return true
+            }
+        }
+
+        // While composing, navigation and editing keys belong to the IME
+        if (historyPreedit.isNotEmpty()) {
+            forwardKeyEvent(event)
+            return true
+        }
+
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> historyOverlay?.moveSelection(-1)
+            KeyEvent.KEYCODE_DPAD_DOWN -> historyOverlay?.moveSelection(1)
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> historyOverlay?.selectCurrent()
+            KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL -> deleteHistoryQueryCharacter()
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {}
             else -> {
-                if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
-                val text = printableText(event)
-                if (text != null) {
-                    appendHistoryQuery(text)
+                // Everything printable goes through the input method engine so
+                // pinyin (or any other IM) can compose Chinese search text
+                if (!forwardKeyEvent(event)) {
+                    printableText(event)?.let { appendHistoryQuery(it) }
                 }
             }
         }
         return true
+    }
+
+    private fun appendHistoryInput(text: String) {
+        if (text.isEmpty()) return
+        appendHistoryQuery(text)
     }
 
     private fun appendHistoryQuery(text: String) {
@@ -958,14 +1154,17 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         scheduleHistoryLoad()
     }
 
-    private fun deleteHistoryQueryCharacter() {
+    private fun deleteHistoryQueryCharacters(count: Int) {
+        if (count <= 0) return
         if (historyQuery.isEmpty()) {
             closeHistoryOverlay()
             return
         }
-        historyQuery = historyQuery.dropLast(1)
+        historyQuery = historyQuery.dropLast(count.coerceAtMost(historyQuery.length))
         scheduleHistoryLoad()
     }
+
+    private fun deleteHistoryQueryCharacter() = deleteHistoryQueryCharacters(1)
 
     private fun scheduleHistoryLoad() {
         val requestId = ++historyRequestId
@@ -1014,7 +1213,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 loadHistoryPage(historyPage)
                 return@launch
             }
-            commitText(selected.text)
+            commitTextToEditor(selected.text)
             closeHistoryOverlay()
         }
     }
@@ -1236,7 +1435,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 loadFavoritesPage(favoritesPage)
                 return@launch
             }
-            commitText(selected.text)
+            commitTextToEditor(selected.text)
             closeFavoritesSubmenu(returnToNative = false)
         }
     }

@@ -336,7 +336,7 @@
     <string name="clipboard_history_empty">No matching clipboard items</string>
     <string name="clipboard_history_no_history">No clipboard history yet</string>
     <string name="clipboard_history_entry_description">Clipboard item: %1$s</string>
-    <string name="clipboard_history_hint">Type to search · Enter paste · Tab/↑↓ select · Ctrl/Alt+1–0 paste item · Ctrl+P pin · Alt+X delete · Backspace/Del edit · Esc close</string>
+    <string name="clipboard_history_hint">Type with IME · tap candidate · Enter paste · Tab/↑↓ select · Ctrl/Alt+1–0 paste · Ctrl+P pin · Alt+X delete · Esc close</string>
     <string name="clipboard_history_deleted_toast">Removed from clipboard history</string>
     <string name="clipboard_history_pinned_toast">Added to pinned favorites</string>
     <string name="clipboard_history_unpinned_toast">Removed from pinned favorites</string>

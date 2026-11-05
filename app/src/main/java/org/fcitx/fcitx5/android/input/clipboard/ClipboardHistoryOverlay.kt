@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.input.clipboard
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +15,9 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.text.buildSpannedString
+import androidx.core.text.color
+import androidx.core.view.updateLayoutParams
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -21,6 +25,11 @@ import splitties.dimensions.dp
 
 /**
  * Keyboard-driven clipboard history browser with an in-panel search query.
+ *
+ * The IME composes search text directly: [setPreedit] shows the current input
+ * method preedit inside the search box, while committed text is appended to
+ * [query] by FcitxInputMethodService. Tapping a row pastes it, tapping outside
+ * the panel (but inside the overlay) dismisses the panel.
  *
  * Like [ClipboardFavoritesOverlay], key dispatch stays in
  * FcitxInputMethodService so opening the panel never steals editor focus.
@@ -38,7 +47,9 @@ class ClipboardHistoryOverlay(
     private val onSelect: (ClipboardEntry) -> Unit,
     private val onDismiss: () -> Unit,
     private val hint: String?,
-    private val emptyMessage: String? = null
+    private val emptyMessage: String? = null,
+    preedit: String = "",
+    maxPanelHeight: Int = 0
 ) : FrameLayout(context) {
 
     private data class Row(
@@ -50,6 +61,17 @@ class ClipboardHistoryOverlay(
     private val scrollView = ScrollView(context)
     private val rows = mutableListOf<Row>()
     private var selectedIndex = selectedIndex.coerceAtLeast(0)
+
+    private var preeditText: String = preedit
+
+    private val searchView = TextView(context).apply {
+        textSize = 14f
+        setTextColor(theme.popupTextColor)
+        setPadding(context.dp(6), context.dp(6), context.dp(6), context.dp(8))
+        background = roundedDrawable(theme.clipboardEntryColor, theme.popupBackgroundColor)
+        ellipsize = TextUtils.TruncateAt.START
+        maxLines = 1
+    }
 
     val currentSelectionIndex: Int
         get() = selectedIndex
@@ -90,17 +112,9 @@ class ClipboardHistoryOverlay(
         }
         panel.addView(titleBar)
 
-        panel.addView(TextView(context).apply {
-            text = if (query.isEmpty()) {
-                context.getString(R.string.clipboard_history_search_placeholder)
-            } else {
-                context.getString(R.string.clipboard_history_search_query, query)
-            }
-            textSize = 14f
-            setTextColor(theme.popupTextColor)
-            setPadding(context.dp(6), context.dp(6), context.dp(6), context.dp(8))
-            background = roundedDrawable(theme.clipboardEntryColor, theme.popupBackgroundColor)
-        })
+        panel.addView(searchView)
+
+        refreshSearchText()
 
         if (!hint.isNullOrBlank()) {
             panel.addView(TextView(context).apply {
@@ -108,6 +122,8 @@ class ClipboardHistoryOverlay(
                 textSize = 12f
                 setTextColor(theme.popupTextColor)
                 setPadding(context.dp(4), context.dp(2), context.dp(4), context.dp(6))
+                maxLines = 3
+                ellipsize = TextUtils.TruncateAt.END
             })
         }
 
@@ -172,7 +188,10 @@ class ClipboardHistoryOverlay(
         val hintHeight = if (!hint.isNullOrBlank()) context.dp(30) else 0
         val titleHeight = context.dp(34)
         val searchHeight = context.dp(42)
-        val panelMaxHeight = (context.resources.displayMetrics.heightPixels * 0.62f).toInt()
+        val panelMaxHeight = when {
+            maxPanelHeight > 0 -> maxPanelHeight
+            else -> (context.resources.displayMetrics.heightPixels * 0.62f).toInt()
+        }
         val listMaxHeight = (panelMaxHeight - titleHeight - searchHeight - hintHeight - context.dp(30))
             .coerceAtLeast(context.dp(72))
         val desiredListHeight = if (entries.isEmpty()) context.dp(82) else entries.size * context.dp(62)
@@ -190,11 +209,52 @@ class ClipboardHistoryOverlay(
         val panelWidth = minOf(availableWidth, context.dp(620))
         addView(
             panel,
-            FrameLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+            FrameLayout.LayoutParams(
+                panelWidth,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
         )
         updateSelection()
         scrollView.post {
             rows.getOrNull(selectedIndex)?.let { scrollView.scrollTo(0, it.root.top) }
+        }
+        // The header text wraps differently across devices, so trim the list
+        // instead of letting the panel spill over the keyboard area
+        panel.post {
+            val overflow = panel.height - panelMaxHeight
+            if (overflow > 0) {
+                val trimmed = (scrollView.height - overflow).coerceAtLeast(context.dp(72))
+                if (trimmed < scrollView.height) {
+                    scrollView.updateLayoutParams<LinearLayout.LayoutParams> {
+                        height = trimmed
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Shows the current input method composition inside the search box.
+     * Committed text is appended to [query] by the service and triggers a reload.
+     */
+    fun setPreedit(preedit: String) {
+        if (preeditText == preedit) return
+        preeditText = preedit
+        refreshSearchText()
+    }
+
+    private fun refreshSearchText() {
+        searchView.text = when {
+            query.isEmpty() && preeditText.isEmpty() ->
+                context.getString(R.string.clipboard_history_search_placeholder)
+            preeditText.isEmpty() ->
+                context.getString(R.string.clipboard_history_search_query, query)
+            else -> buildSpannedString {
+                if (query.isNotEmpty()) append(query)
+                color(theme.genericActiveForegroundColor) { append(preeditText) }
+                append("▌")
+            }
         }
     }
 

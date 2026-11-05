@@ -377,6 +377,13 @@ class InputView(
         broadcaster.onSelectionUpdate(start, end)
     }
 
+    /**
+     * Brings the on-screen keyboard back, eg. when a clipboard panel takes over input.
+     */
+    fun showKeyboardWindow() {
+        windowManager.attachWindow(KeyboardWindow)
+    }
+
     @RequiresApi(Build.VERSION_CODES.R)
     fun handleInlineSuggestions(response: InlineSuggestionsResponse): Boolean {
         return kawaiiBar.handleInlineSuggestions(response)
