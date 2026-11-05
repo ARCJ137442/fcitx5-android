@@ -83,3 +83,18 @@
 - 新增核心配置 `SearchTriggerKeySecondary`（“Additional clipboard history search trigger keys”），默认空列表；与现有 `SearchTriggerKey`（默认 Alt+Shift+F）并存。
 - Release：`clipboard-search-ux-2026-11-05`（prerelease，资产 `fcitx5-android-clipboard-search-ux-arm64-v8a-debug.apk`，SHA-256 `8F3CA261…AF752`，versionName `bde10c3`，versionCode 112）。
 - 未包含：搜索框接收软键盘/IME 输入。当前面板覆盖输入法窗口且只处理硬件 `KeyEvent`；要支持需同时改「面板不遮挡键盘」与「软键盘 KeyAction 路由」，拼音上屏还需拦截 commit 事件，先确认语义（原始按键 vs 完整 IME 上屏）。
+
+## 2026-11-05 搜索框接收输入法上屏（待实测）
+
+- 分支/提交：`codex/rime-deploy-broadcast` `85aaee4`。
+- 面板改为只占「键盘上方区域」（`FrameLayout` 底部 margin = 软键盘高度），软键盘保持可见可点；面板在可用区域内居中，并在布局后按实际标题/提示高度收缩列表，避免溢出到键盘区域。
+- 触摸：面板打开期间 `onComputeInsets` 使用 `TOUCHABLE_INSETS_REGION` 把整个输入法窗口设为可触控。此前键盘上方区域默认不触控，面板/候选项点不到；现在点列表项即粘贴、点外侧即关闭，`favorites` 置顶面板同样受益。
+- 候选项上屏：虚拟键盘模式显示键盘顶栏（KawaiiBar）候选条；物理键盘模式使用浮动候选窗，并 `bringToFront()` 保证候选窗盖在面板之上可点击。点击候选走 `fcitx.select()`，其提交被重定向到搜索词。
+- 输入路由（方案 B）：
+  - `CommitStringEvent` / `commitText()` 在面板打开时改为写入搜索查询（`appendHistoryInput`），不再送进目标编辑器。
+  - `ClientPreeditEvent` 不再调用 `updateComposingText`（不碰编辑器），改为在搜索框内显示组合串；`InputPanelEvent` 的 preedit 作为未启用客户端 preedit 时的回退。
+  - `DeleteSurroundingEvent` 映射为删除查询字符；空查询时按退格直接关闭面板。
+  - 硬件键在面板打开时转发给 fcitx 引擎（拼音可组合、可选候选）；组合中把方向键/回车/退格/数字等交给引擎，未组合时面板处理导航与快捷键（Tab、↑↓、Ctrl/Alt+数字、Ctrl+P、Alt+X、`[`/`]`、PageUp/PageDown、Esc）。
+  - 打开/关闭面板都会 `reset()` 引擎组合态并清空 preedit，避免组合串泄漏到编辑器。
+- Release：`clipboard-search-ime-2026-11-05`（prerelease，资产 `fcitx5-android-clipboard-search-ime-arm64-v8a-debug.apk`，SHA-256 `153316D2…CEF3A`，versionCode 112，versionName `85aaee4`）。
+- 已知限制：面板打开时目标应用不可点击（模态面板）；物理键盘模式下浮动候选窗位置仍跟随编辑器光标；搜索仍只覆盖文本剪贴项。
